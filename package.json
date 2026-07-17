@@ -1,0 +1,16 @@
+{
+  "name": "glm-quota-widget-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GLM Quota Widget 平台无关核心逻辑（Phase 1）。验证 ADR-0001 数据契约，后续移植 ArkTS。详见 docs/adr/0001-glm-coding-plan-usage-direct-key.md",
+  "scripts": {
+    "test": "node --test --experimental-strip-types \"tests/**/*.test.ts\"",
+    "check-live": "node --experimental-strip-types scripts/check-live.ts",
+    "tsc": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}

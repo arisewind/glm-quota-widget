@@ -1,0 +1,17 @@
+# 不属于 Quota Widget 项目本身的内容
+bigmodel/
+.claude/
+.agents/
+skills-lock.json
+
+# Node
+node_modules/
+dist/
+
+# 临时 / 系统 / 敏感
+*.eml
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+~$*
