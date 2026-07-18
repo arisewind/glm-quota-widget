@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -35,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,6 +59,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModelProvider
+import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.NormalizedWindow
 import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.UsageStatus
@@ -157,6 +160,7 @@ private fun UsageScreen(
     onOpenAccounts: () -> Unit
 ) {
     val snap = content.snapshot
+    val activeAccount = content.accounts.firstOrNull { it.accountId == content.activeAccountId }
     Scaffold { padding ->
         Column(
             Modifier
@@ -170,13 +174,17 @@ private fun UsageScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        snap.providerLabel,
+                        activeAccount?.label ?: snap.providerLabel,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    snap.planName?.takeIf { it.isNotEmpty() }?.let {
+                    val sub = listOfNotNull(
+                        snap.providerLabel.takeIf { it.isNotEmpty() && it != (activeAccount?.label ?: snap.providerLabel) },
+                        snap.planName?.takeIf { it.isNotEmpty() }
+                    ).joinToString(" · ")
+                    if (sub.isNotEmpty()) {
                         Text(
-                            it,
+                            sub,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -248,6 +256,9 @@ private fun UsageScreen(
 private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> Unit) {
     val accounts by vm.accounts.collectAsState()
     val activeId by vm.activeAccountId.collectAsState()
+    val refreshAll by vm.backgroundRefreshAll.collectAsState()
+    var renaming by remember { mutableStateOf<Account?>(null) }
+
     Scaffold { padding ->
         Column(
             Modifier
@@ -262,6 +273,29 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
                 TextButton(onBack) { Text("返回") }
                 Spacer(Modifier.size(4.dp))
                 Text("账户管理", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+
+            // 后台刷新设置
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("后台刷新全部账户", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "关闭=只刷当前账户（省电、降低风控）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = refreshAll, onCheckedChange = { vm.setBackgroundRefreshAll(it) })
+                }
             }
 
             accounts.forEach { acc ->
@@ -302,6 +336,7 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
                             if (acc.accountId != activeId) {
                                 TextButton(onClick = { vm.switchAccount(acc.accountId) }) { Text("切换") }
                             }
+                            TextButton(onClick = { renaming = acc }) { Text("重命名") }
                             TextButton(
                                 onClick = { vm.removeAccount(acc.accountId) },
                                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -331,6 +366,37 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
             Spacer(Modifier.height(16.dp))
         }
     }
+
+    renaming?.let { acc ->
+        RenameAccountDialog(
+            initial = acc.label,
+            onConfirm = { vm.renameAccount(acc.accountId, it); renaming = null },
+            onDismiss = { renaming = null }
+        )
+    }
+}
+
+@Composable
+private fun RenameAccountDialog(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("重命名账户") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(text) }) { Text("确定") } },
+        dismissButton = { TextButton(onDismiss) { Text("取消") } }
+    )
 }
 
 @Composable

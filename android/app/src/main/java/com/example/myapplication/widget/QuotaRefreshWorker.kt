@@ -12,12 +12,13 @@ import com.example.myapplication.services.AccountStore
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.Providers
+import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageRefreshService
 import java.util.concurrent.TimeUnit
 
 /**
  * 周期性后台刷新缓存并更新 widget。
- * v2.0：遍历所有账户，逐个刷新其缓存（per-account RefreshService）；
+ * v2.1：默认只刷新 active 账户（省电 + 降低风控）；开启「后台刷新全部」设置后遍历所有账户。
  * 失败由 RefreshService 内部捕获并写 stale/error 缓存，不会抛出。
  */
 class QuotaRefreshWorker(
@@ -27,7 +28,14 @@ class QuotaRefreshWorker(
 
     override suspend fun doWork(): Result {
         val store = AccountStore(applicationContext)
-        val accounts = store.listAccounts()
+        val settings = SettingsStore(applicationContext)
+        val uiPrefs = applicationContext.getSharedPreferences("glm_quota_ui", Context.MODE_PRIVATE)
+        val accounts = if (settings.backgroundRefreshAll()) {
+            store.listAccounts()
+        } else {
+            val activeId = uiPrefs.getString("active_account_id", null)
+            listOfNotNull(activeId?.let { store.getAccount(it) })
+        }
         if (accounts.isEmpty()) return Result.success()
 
         val cache = PrefsCacheStorage(applicationContext)

@@ -13,6 +13,7 @@ import com.example.myapplication.services.CacheStorage
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.Providers
+import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,11 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val http = OkHttpExecutor()
     private val cache: CacheStorage = PrefsCacheStorage(app)
     private val uiPrefs = app.getSharedPreferences("glm_quota_ui", Context.MODE_PRIVATE)
+    private val settings = SettingsStore(app)
+
+    /** 后台刷新是否遍历全部账户（默认 false = 仅 active，省电 + 降低风控）。 */
+    private val _backgroundRefreshAll = MutableStateFlow(settings.backgroundRefreshAll())
+    val backgroundRefreshAll: StateFlow<Boolean> = _backgroundRefreshAll
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
@@ -168,6 +174,22 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
                 onResult(false, e.mapped.message)
             }
         }
+    }
+
+    /** 重命名账户（只改 label，不动凭据；空名忽略）。 */
+    fun renameAccount(accountId: String, newLabel: String) {
+        viewModelScope.launch {
+            val acc = accountStore.getAccount(accountId) ?: return@launch
+            val trimmed = newLabel.trim().takeIf { it.isNotEmpty() } ?: return@launch
+            accountStore.saveAccount(acc.copy(label = trimmed))
+            refreshServices.clear()
+            _accounts.value = accountStore.listAccounts()
+        }
+    }
+
+    fun setBackgroundRefreshAll(all: Boolean) {
+        settings.setBackgroundRefreshAll(all)
+        _backgroundRefreshAll.value = all
     }
 
     fun removeAccount(accountId: String) {
