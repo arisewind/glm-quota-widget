@@ -276,13 +276,14 @@ AddAccountScreen → 选 provider/region/key
 
 ## 12. 可测试性
 
-### 已有
-- `UsageParserTest`（10 个，GLM/Kimi/MiniMax 解析，cc-switch 样例响应）
-- host JVM 单测需 `testImplementation("org.json:json")` 替代 android.jar 的 org.json stub
+### 已有（20 个单测全过）
+- `UsageParserTest`（10 个）—— GLM/Kimi/MiniMax 解析，cc-switch 样例响应
+- `GlmUsageProviderTest` / `KimiUsageProviderTest` / `MiniMaxUsageProviderTest`（10 个）—— mock HttpExecutor 验全链路：URL 拼装、认证头（Raw/Bearer）、错误映射（AUTH/NETWORK/NO_PLAN）、CN/INTL 切换
+- host JVM 单测需 `testImplementation("org.json:json")` 替代 android.jar 的 org.json stub（生产用 android org.json，测试用 org.json:json —— 两者同源、host JVM 单测标准做法）
 
-### 待补（见 [REVIEW.md](REVIEW.md)）
-- Provider 集成测试（mock HttpExecutor 验全链路）
-- AccountStore 迁移测试、缓存 schema 升级测试、VM 逻辑测试
+### 待补（需 Robolectric / instrumented test）
+- AccountStore 迁移测试（依赖 Android EncryptedSharedPreferences，v1.x→Account 迁移已**真机验证**通过 glm-xxx）
+- 缓存 schema 升级测试、VM 逻辑测试
 
 ---
 

@@ -38,7 +38,7 @@
 
 ### 🟡 架构 / 技术债
 
-3. **测试覆盖窄** —— 仅 10 个解析单测。缺：Provider 集成测试（mock HttpExecutor 验全链路）、VM 逻辑测试、AccountStore 迁移测试、缓存 schema 升级测试。
+3. **测试覆盖改善中** —— 解析单测(10) + Provider 集成测试(10) 已覆盖核心数据通路（URL/认证/解析/错误映射）；仍缺 AccountStore 迁移测试、缓存 schema 升级测试、VM 逻辑测试（依赖 Android EncryptedSharedPreferences，需 Robolectric/instrumented；迁移已真机验证通过）。
 4. **单测 org.json hack** —— 生产用 android org.json、测试用 `org.json:json`，两者边缘行为（数字 / null 解析）可能微妙不一致。
 5. **AccountStore 三层迁移**（v1.0 明文 → v1.1 secure → v2.0 Account）逻辑叠太久，未来清理负担。
 
