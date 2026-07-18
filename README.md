@@ -78,7 +78,10 @@ Android 工程:在 [`android/`](android/) 用 `gradlew assembleDebug` 编译(需
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计(TS 核心,已移植 Kotlin) |
 | [ROADMAP.md](docs/ROADMAP.md) | 路线图(v1.1 → v2.0 多服务商) |
 | [REVIEW.md](docs/REVIEW.md) | 项目审阅与关键决策记录 |
-| [docs/adr/0001-...](docs/adr/0001-glm-coding-plan-usage-direct-key.md) | 直连数据契约 ADR |
+| [v2-provider-research.md](docs/v2-provider-research.md) | v2.0 各服务商用量契约调研 |
+| [ADR-0001](docs/adr/0001-glm-coding-plan-usage-direct-key.md) | GLM 直连数据契约 |
+| [ADR-0002](docs/adr/0002-multi-provider-normalization.md) | 多服务商归一化模型(v2.0 架构) |
+| [ADR-0003](docs/adr/0003-kimi-usage-direct.md) | Kimi 直连契约(v2.0 第二家) |
 
 ## 路线图(摘要)
 
