@@ -150,11 +150,16 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val credential = credentialFor(providerId, key)
             val provider = Providers.create(providerId)
+            val accountLabel = label?.takeIf { it.isNotBlank() }
+                ?: providerOptions.firstOrNull { it.providerId == providerId }?.label
+                ?: providerId
+            // 重名校验（账户名全局唯一，避免同服务商多账户混淆）
+            if (accountStore.listAccounts().any { it.label == accountLabel }) {
+                onResult(false, "账户名「$accountLabel」已存在，请改名后重试")
+                return@launch
+            }
             try {
                 provider.fetchUsage(credential, region, http) // 测试连接
-                val accountLabel = label?.takeIf { it.isNotBlank() }
-                    ?: providerOptions.firstOrNull { it.providerId == providerId }?.label
-                    ?: providerId
                 val account = Account(
                     accountId = "$providerId-${UUID.randomUUID()}",
                     providerId = providerId,

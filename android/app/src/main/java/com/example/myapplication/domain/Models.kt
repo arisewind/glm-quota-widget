@@ -69,4 +69,14 @@ object ServiceProviderInfo {
     const val GLM_LABEL = "智谱 GLM Coding Plan"
     const val KIMI_LABEL = "Kimi For Coding"
     const val MINIMAX_LABEL = "MiniMax Coding Plan"
+
+    /** 服务商品牌色（ARGB），用于列表 widget 色条/色点区分账户归属。 */
+    private val BRAND_COLORS = mapOf(
+        GLM_ID to 0xFF00C2B8.toInt(),      // 智谱 GLM 青
+        KIMI_ID to 0xFF7C5CFF.toInt(),     // Kimi 紫
+        MINIMAX_ID to 0xFFF59E0B.toInt(),  // MiniMax 橙
+        "volc" to 0xFFEF4444.toInt()       // 火山方舟 红（v2.1+）
+    )
+
+    fun brandColor(providerId: String): Int = BRAND_COLORS[providerId] ?: 0xFF8A93A6.toInt()
 }
