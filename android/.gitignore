@@ -1,0 +1,34 @@
+# Gradle
+.gradle/
+**/build/
+
+# 本地配置（含本机 SDK 路径，禁止提交）
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin
+*.kotlin_metadata
+
+# 系统 / 日志
+*.log
+.DS_Store
+Thumbs.db
+
+# 兼容旧 HarmonyOS 残留（已弃用）
+/node_modules
+/oh_modules
+/.hvigor
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+
+# 本地截图（真机验证产物，不入库）
+/screenshot_*.png
+/glm_screen.png

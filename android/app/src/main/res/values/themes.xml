@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 开屏页主题（core-splashscreen）。深色品牌背景 + 应用图标，过渡到 Theme.MyApplication。 -->
+    <style name="Theme.MyApplication.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/widget_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
+    </style>
+</resources>
