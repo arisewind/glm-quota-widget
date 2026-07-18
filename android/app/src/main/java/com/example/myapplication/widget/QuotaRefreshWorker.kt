@@ -8,17 +8,17 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.example.myapplication.services.CredentialStore
-import com.example.myapplication.services.DirectKeyUsageProvider
+import com.example.myapplication.services.AccountStore
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
+import com.example.myapplication.services.Providers
 import com.example.myapplication.services.UsageRefreshService
 import java.util.concurrent.TimeUnit
 
 /**
  * 周期性后台刷新缓存并更新 widget。
- * 复用核心层（CredentialStore / DirectKeyUsageProvider / UsageRefreshService），
- * 失败由 refreshService 内部捕获并写 stale/error 缓存，不会抛出。
+ * v2.0：遍历所有账户，逐个刷新其缓存（per-account RefreshService）；
+ * 失败由 RefreshService 内部捕获并写 stale/error 缓存，不会抛出。
  */
 class QuotaRefreshWorker(
     appContext: Context,
@@ -26,20 +26,22 @@ class QuotaRefreshWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val creds = CredentialStore(applicationContext)
-        if (creds.getKey() == null) return Result.success()
+        val store = AccountStore(applicationContext)
+        val accounts = store.listAccounts()
+        if (accounts.isEmpty()) return Result.success()
 
         val cache = PrefsCacheStorage(applicationContext)
-        val provider = DirectKeyUsageProvider(
-            getRegion = { creds.getRegion() },
-            getKey = { creds.getKey() },
-            http = OkHttpExecutor()
-        )
-        val refreshService = UsageRefreshService(
-            provider = provider,
-            cacheStorage = cache
-        )
-        runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }
+        val http = OkHttpExecutor()
+        accounts.forEach { account ->
+            val provider = Providers.create(account.providerId)
+            val refreshService = UsageRefreshService(
+                account = account,
+                provider = provider,
+                http = http,
+                cacheStorage = cache
+            )
+            runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }
+        }
         WidgetRenderer.refreshFromCache(applicationContext)
         return Result.success()
     }

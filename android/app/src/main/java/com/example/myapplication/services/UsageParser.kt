@@ -1,30 +1,35 @@
 package com.example.myapplication.services
 
-import com.example.myapplication.domain.CodingPlanUsage
 import com.example.myapplication.domain.ModelUsageItem
+import com.example.myapplication.domain.NormalizedWindow
+import com.example.myapplication.domain.ServiceProviderInfo
+import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.UsageSource
 import com.example.myapplication.domain.UsageStatus
-import com.example.myapplication.domain.UsageWindow
+import com.example.myapplication.domain.WindowKind
 import org.json.JSONObject
+import java.time.Instant
 
 class UpstreamChangedException(message: String) : Exception(message)
 
 /**
- * 上游响应 → CodingPlanUsage 解析（ADR-0001 数据契约）。
- * 用 Android 内置 org.json。unit 映射：TOKENS_LIMIT unit:3=5h, unit:6=周；TIME_LIMIT unit:5=模型用量。
- * 结构不符合契约时抛 UpstreamChangedException，由 Provider 映射为 UPSTREAM_CHANGED。
+ * 各 Provider 的响应解析（ADR-0001 GLM / ADR-0003 Kimi / v2-provider-research MiniMax）。
+ * 每家一个 parse 函数，统一输出归一化 [UsageSnapshot]（ADR-0002）。
  */
 object UsageParser {
 
-    fun parse(body: String, now: Long): CodingPlanUsage {
+    /**
+     * GLM（ADR-0001）：`data.limits` 按 type+unit 映射——
+     * TOKENS_LIMIT unit:3 = 5h、unit:6 = 周；TIME_LIMIT unit:5 = 模型用量（附加 modelUsage）。
+     * 必须按 unit 分类窗口，不能按 nextResetTime 排序（cc-switch #3036）。
+     */
+    fun parseGlm(body: String, now: Long): UsageSnapshot {
         val root = JSONObject(body)
         if (!root.optBoolean("success", false)) {
             throw UpstreamChangedException("success=false, code=${root.opt("code")}, msg=${root.opt("msg")}")
         }
-        val data = root.optJSONObject("data")
-            ?: throw UpstreamChangedException("missing data")
-        val limits = data.optJSONArray("limits")
-            ?: throw UpstreamChangedException("missing limits")
+        val data = root.optJSONObject("data") ?: throw UpstreamChangedException("missing data")
+        val limits = data.optJSONArray("limits") ?: throw UpstreamChangedException("missing limits")
 
         fun find(type: String, unit: Int): JSONObject? {
             for (i in 0 until limits.length()) {
@@ -40,21 +45,23 @@ object UsageParser {
             ?: throw UpstreamChangedException("missing weekly window (TOKENS_LIMIT unit:6)")
         val modelLimit = find("TIME_LIMIT", 5)
 
+        val windows = listOf(
+            toGlmWindow(sessionLimit, WindowKind.FIVE_HOUR),
+            toGlmWindow(weeklyLimit, WindowKind.WEEKLY)
+        )
         val modelUsage: List<ModelUsageItem>? = modelLimit?.optJSONArray("usageDetails")?.let { arr ->
             (0 until arr.length()).mapNotNull { i ->
                 arr.optJSONObject(i)?.let { d ->
-                    ModelUsageItem(
-                        d.optString("modelCode", "unknown"),
-                        d.optInt("usage", 0)
-                    )
+                    ModelUsageItem(d.optString("modelCode", "unknown"), d.optInt("usage", 0))
                 }
             }
         }
 
-        return CodingPlanUsage(
+        return UsageSnapshot(
+            providerId = ServiceProviderInfo.GLM_ID,
+            providerLabel = ServiceProviderInfo.GLM_LABEL,
+            windows = windows,
             planName = data.optString("level").takeIf { it.isNotEmpty() },
-            session = toWindow(sessionLimit),
-            weekly = toWindow(weeklyLimit),
             modelUsage = modelUsage,
             updatedAt = now,
             source = UsageSource.DIRECT,
@@ -62,10 +69,116 @@ object UsageParser {
         )
     }
 
-    private fun toWindow(limit: JSONObject): UsageWindow {
+    private fun toGlmWindow(limit: JSONObject, kind: WindowKind): NormalizedWindow {
         val used = limit.optInt("percentage", 0).coerceIn(0, 100)
         val reset = if (limit.has("nextResetTime") && !limit.isNull("nextResetTime"))
             limit.optLong("nextResetTime") else null
-        return UsageWindow(used, 100 - used, reset)
+        return NormalizedWindow(kind, used, reset)
     }
+
+    /**
+     * Kimi（ADR-0003）：`limits[].detail` = 5h 窗，`usage` = 周窗（结构不对称）。
+     * 字段为绝对值 limit/remaining，需自算百分比。端点为 Kimi Code Console 内部接口（无公开文档）。
+     */
+    fun parseKimi(body: String, now: Long): UsageSnapshot {
+        val root = JSONObject(body)
+        val limits = root.optJSONArray("limits") ?: throw UpstreamChangedException("missing limits")
+        val usage = root.optJSONObject("usage") ?: throw UpstreamChangedException("missing usage")
+        val fiveHour = (0 until limits.length())
+            .mapNotNull { limits.optJSONObject(it)?.optJSONObject("detail") }
+            .firstOrNull() ?: throw UpstreamChangedException("missing 5h detail")
+
+        val windows = listOf(
+            toKimiWindow(fiveHour, WindowKind.FIVE_HOUR),
+            toKimiWindow(usage, WindowKind.WEEKLY)
+        )
+        return UsageSnapshot(
+            providerId = ServiceProviderInfo.KIMI_ID,
+            providerLabel = ServiceProviderInfo.KIMI_LABEL,
+            windows = windows,
+            updatedAt = now,
+            source = UsageSource.DIRECT,
+            status = UsageStatus.OK
+        )
+    }
+
+    private fun toKimiWindow(o: JSONObject, kind: WindowKind): NormalizedWindow {
+        val limit = o.optDouble("limit", 0.0)
+        val remaining = o.optDouble("remaining", 0.0)
+        val usedRaw = (limit - remaining).coerceAtLeast(0.0)
+        val usedPercent = if (limit > 0) (usedRaw / limit * 100).toInt().coerceIn(0, 100) else 0
+        return NormalizedWindow(
+            kind = kind,
+            usedPercent = usedPercent,
+            resetAt = extractResetTime(o, "resetTime"),
+            usedValue = usedRaw.takeIf { it > 0 },
+            totalValue = limit.takeIf { it > 0 },
+            unit = "tokens"
+        )
+    }
+
+    /**
+     * MiniMax（v2-provider-research）：`model_remains[]` 找 `model_name=="general"`。
+     * 字段为**剩余百分比**，需用 100 减；周桶仅当 `current_weekly_status==1` 才激活（==3 无周限额，跳过）。
+     */
+    fun parseMiniMax(body: String, now: Long): UsageSnapshot {
+        val root = JSONObject(body)
+        val base = root.optJSONObject("base_resp")
+        val statusCode = base?.optInt("status_code", 0) ?: 0
+        if (statusCode != 0) {
+            throw UpstreamChangedException("minimax base_resp status=$statusCode msg=${base?.opt("status_msg")}")
+        }
+        val remains = root.optJSONArray("model_remains")
+            ?: throw UpstreamChangedException("missing model_remains")
+        val general = (0 until remains.length())
+            .mapNotNull { remains.optJSONObject(it) }
+            .firstOrNull { it.optString("model_name") == "general" }
+            ?: throw UpstreamChangedException("missing general bucket")
+
+        val windows = mutableListOf<NormalizedWindow>()
+        val intervalRemaining = general.optInt("current_interval_remaining_percent", 0).coerceIn(0, 100)
+        windows.add(
+            NormalizedWindow(
+                WindowKind.FIVE_HOUR,
+                (100 - intervalRemaining).coerceIn(0, 100),
+                resetAt = general.optLong("end_time").takeIf { it > 0 }
+            )
+        )
+        if (general.optInt("current_weekly_status", 0) == 1) {
+            val weeklyRemaining = general.optInt("current_weekly_remaining_percent", 0).coerceIn(0, 100)
+            windows.add(
+                NormalizedWindow(
+                    WindowKind.WEEKLY,
+                    (100 - weeklyRemaining).coerceIn(0, 100),
+                    resetAt = general.optLong("weekly_end_time").takeIf { it > 0 }
+                )
+            )
+        }
+
+        return UsageSnapshot(
+            providerId = ServiceProviderInfo.MINIMAX_ID,
+            providerLabel = ServiceProviderInfo.MINIMAX_LABEL,
+            windows = windows,
+            updatedAt = now,
+            source = UsageSource.DIRECT,
+            status = UsageStatus.OK
+        )
+    }
+
+    /** 兼容 ISO 字符串 / 秒 / 毫秒的重置时间解析（Kimi 等 resetTime 格式不固定）。<1e12 视为秒。 */
+    private fun extractResetTime(o: JSONObject, key: String): Long? {
+        if (!o.has(key) || o.isNull(key)) return null
+        return when (val v = o.opt(key)) {
+            is Number -> {
+                val n = v.toDouble()
+                when { n <= 0 -> null; n < 1e12 -> (n * 1000).toLong(); else -> n.toLong() }
+            }
+            is String -> parseIsoTime(v) ?: v.toDoubleOrNull()?.let { n ->
+                when { n <= 0 -> null; n < 1e12 -> (n * 1000).toLong(); else -> n.toLong() }
+            }
+            else -> null
+        }
+    }
+
+    private fun parseIsoTime(s: String): Long? = runCatching { Instant.parse(s).toEpochMilli() }.getOrNull()
 }

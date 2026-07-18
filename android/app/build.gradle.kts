@@ -54,6 +54,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.core:core-splashscreen:1.0.1")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")  // host JVM 单测用真实 org.json（替代 android.jar stub）
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

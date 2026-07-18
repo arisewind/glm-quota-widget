@@ -1,20 +1,24 @@
 package com.example.myapplication.services
 
-import com.example.myapplication.domain.CodingPlanUsage
-import com.example.myapplication.domain.ServiceProviderInfo
+import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.UsageErrorCode
+import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.UsageSource
 import com.example.myapplication.domain.UsageStatus
-import com.example.myapplication.domain.UsageWindow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 刷新编排（架构 §4.4/§5）：节流、并发锁、连续失败退避、认证/解析失败停止自动刷新。 */
+/**
+ * 单账户刷新编排（架构 §4.4/§5）：节流、并发锁、连续失败退避、认证/解析失败停止自动刷新。
+ * 状态 per-instance；多账户下每个 [Account] 各持一个本实例。
+ */
 class UsageRefreshService(
-    private val provider: UsageProvider,
+    private val account: Account,
+    private val provider: ServiceProvider,
+    private val http: HttpExecutor,
     private val cacheStorage: CacheStorage,
     private val now: () -> Long = { System.currentTimeMillis() },
-    private val onRefresh: ((CodingPlanUsage) -> Unit)? = null,
+    private val onRefresh: ((UsageSnapshot) -> Unit)? = null,
     private val getSettings: () -> RefreshSettings = { RefreshSettings(false) }
 ) {
     data class RefreshSettings(val autoRefreshEnabled: Boolean)
@@ -26,52 +30,52 @@ class UsageRefreshService(
     private var consecutiveFailures = 0
     private var autoRefreshPausedUntil = 0L
     private var stoppedFor: UsageErrorCode? = null
-    private var lastUsage: CodingPlanUsage? = null
+    private var lastUsage: UsageSnapshot? = null
 
     fun canRefresh(reason: Reason): Boolean {
-        val now = now()
+        val n = now()
         if (reason == Reason.MANUAL) {
-            return lastFetchStartedAt == 0L || now - lastFetchStartedAt >= THROTTLE_MS
+            return lastFetchStartedAt == 0L || n - lastFetchStartedAt >= THROTTLE_MS
         }
         if (stoppedFor != null) return false
-        if (now < autoRefreshPausedUntil) return false
+        if (n < autoRefreshPausedUntil) return false
         if (reason == Reason.BACKGROUND && !getSettings().autoRefreshEnabled) return false
         val interval = if (reason == Reason.FOREGROUND) FOREGROUND_MS else BACKGROUND_MS
-        return lastSuccessAt == 0L || now - lastSuccessAt >= interval
+        return lastSuccessAt == 0L || n - lastSuccessAt >= interval
     }
 
-    /** 成功返回 ok 用量；失败保留缓存标 stale，或无缓存返回 error 态。并发由 Mutex 串行化。 */
-    suspend fun refresh(reason: Reason): CodingPlanUsage = mutex.withLock {
+    /** 成功返回 ok 快照；失败保留缓存标 stale，或无缓存返回 error 态。并发由 Mutex 串行化。 */
+    suspend fun refresh(reason: Reason): UsageSnapshot = mutex.withLock {
         if (!canRefresh(reason)) return@withLock currentSnapshot()
         lastFetchStartedAt = now()
         try {
-            val usage = provider.fetchUsage()
-            lastUsage = usage
+            val snap = provider.fetchUsage(account.credential, account.region, http)
+            lastUsage = snap
             lastSuccessAt = now()
             consecutiveFailures = 0
             autoRefreshPausedUntil = 0L
             stoppedFor = null
-            UsageCache.save(cacheStorage, usage)
-            onRefresh?.invoke(usage)
-            usage
-        } catch (e: UsageProviderException) {
-            val snap = applyFailure(e.mapped)
+            UsageCache.save(cacheStorage, account.accountId, snap)
             onRefresh?.invoke(snap)
             snap
+        } catch (e: UsageProviderException) {
+            val failed = applyFailure(e.mapped)
+            onRefresh?.invoke(failed)
+            failed
         }
     }
 
-    fun currentSnapshot(): CodingPlanUsage = lastUsage ?: CodingPlanUsage(
-        session = UsageWindow(0, 100),
-        weekly = UsageWindow(0, 100),
+    fun currentSnapshot(): UsageSnapshot = lastUsage ?: UsageSnapshot(
+        providerId = account.providerId,
+        providerLabel = account.label,
+        windows = emptyList(),
         updatedAt = 0L,
         source = UsageSource.DIRECT,
-        providerLabel = ServiceProviderInfo.GLM_LABEL,
         status = UsageStatus.UNCONFIGURED
     )
 
-    suspend fun hydrateFromCache(): CodingPlanUsage? {
-        val cached = UsageCache.load(cacheStorage)
+    suspend fun hydrateFromCache(): UsageSnapshot? {
+        val cached = UsageCache.load(cacheStorage, account.accountId)
         if (cached != null) {
             lastUsage = cached
             lastSuccessAt = cached.updatedAt
@@ -79,7 +83,7 @@ class UsageRefreshService(
         return cached
     }
 
-    private fun applyFailure(mapped: MappedError): CodingPlanUsage {
+    private fun applyFailure(mapped: MappedError): UsageSnapshot {
         val code = mapped.code
         if (code in STOP_CODES) {
             stoppedFor = code
@@ -93,12 +97,12 @@ class UsageRefreshService(
         return if (lastUsage != null) {
             lastUsage!!.copy(status = status, errorCode = code, errorMessage = mapped.message)
         } else {
-            CodingPlanUsage(
-                session = UsageWindow(0, 0),
-                weekly = UsageWindow(0, 0),
+            UsageSnapshot(
+                providerId = account.providerId,
+                providerLabel = account.label,
+                windows = emptyList(),
                 updatedAt = now(),
                 source = UsageSource.DIRECT,
-                providerLabel = ServiceProviderInfo.GLM_LABEL,
                 status = status,
                 errorCode = code,
                 errorMessage = mapped.message

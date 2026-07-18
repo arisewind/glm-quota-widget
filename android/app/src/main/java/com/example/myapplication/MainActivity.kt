@@ -56,16 +56,17 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.myapplication.domain.CodingPlanUsage
+import com.example.myapplication.domain.NormalizedWindow
+import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.UsageStatus
+import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.Region
+import com.example.myapplication.ui.UsageUiState
+import com.example.myapplication.ui.UsageViewModel
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import com.example.myapplication.ui.theme.UsageDanger
 import com.example.myapplication.ui.theme.UsageSafe
 import com.example.myapplication.ui.theme.UsageWarn
-import com.example.myapplication.ui.UsageUiState
-import com.example.myapplication.ui.UsageViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -88,15 +89,21 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    var showSettings by rememberSaveable { mutableStateOf(false) }
-                    val state by vm.state.collectAsState()
-                    if (showSettings) {
-                        SettingsScreen(vm) { showSettings = false }
-                    } else {
-                        when (val s = state) {
-                            UsageUiState.Loading -> LoadingView()
-                            UsageUiState.Unconfigured -> SetupScreen(vm)
-                            is UsageUiState.Data -> UsageScreen(s.usage, vm) { showSettings = true }
+                    var screen by rememberSaveable { mutableStateOf("main") }
+                    when (screen) {
+                        "accounts" -> AccountsScreen(
+                            vm,
+                            onBack = { screen = "main" },
+                            onAdd = { screen = "add" }
+                        )
+                        "add" -> AddAccountScreen(vm, isFirst = false, onDone = { screen = "accounts" })
+                        else -> {
+                            val state by vm.state.collectAsState()
+                            when (val s = state) {
+                                UsageUiState.Loading -> LoadingView()
+                                UsageUiState.Unconfigured -> AddAccountScreen(vm, isFirst = true, onDone = {})
+                                is UsageUiState.Content -> UsageScreen(s, vm, onOpenAccounts = { screen = "accounts" })
+                            }
                         }
                     }
                 }
@@ -112,17 +119,216 @@ private fun LoadingView() {
     }
 }
 
-/** 已用百分比 → 配色：<60% 安全（青）、60–85% 警告（琥珀）、>85% 危险（珊瑚红）。 */
 private fun usageColorFor(usedPercent: Int): Color = when {
     usedPercent > 85 -> UsageDanger
     usedPercent >= 60 -> UsageWarn
     else -> UsageSafe
 }
 
+private fun windowTitle(kind: WindowKind) = when (kind) {
+    WindowKind.FIVE_HOUR -> "5 小时额度"
+    WindowKind.WEEKLY -> "本周额度"
+    WindowKind.MONTHLY -> "本月额度"
+}
+
+private fun providerLabelOf(providerId: String) = when (providerId) {
+    ServiceProviderInfo.GLM_ID -> ServiceProviderInfo.GLM_LABEL
+    ServiceProviderInfo.KIMI_ID -> ServiceProviderInfo.KIMI_LABEL
+    ServiceProviderInfo.MINIMAX_ID -> ServiceProviderInfo.MINIMAX_LABEL
+    else -> providerId
+}
+
 @Composable
-private fun SetupScreen(vm: UsageViewModel) {
-    var key by remember { mutableStateOf("") }
+private fun UsageScreen(
+    content: UsageUiState.Content,
+    vm: UsageViewModel,
+    onOpenAccounts: () -> Unit
+) {
+    val snap = content.snapshot
+    Scaffold { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 22.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        snap.providerLabel,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    snap.planName?.takeIf { it.isNotEmpty() }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                TextButton(onOpenAccounts) { Text("账户", fontWeight = FontWeight.SemiBold) }
+                TextButton(onClick = { vm.refresh() }) { Text("刷新", fontWeight = FontWeight.SemiBold) }
+            }
+
+            if (content.accounts.size > 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    content.accounts.forEach { acc ->
+                        FilterChip(
+                            selected = acc.accountId == content.activeAccountId,
+                            onClick = { vm.switchAccount(acc.accountId) },
+                            label = { Text(acc.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (snap.status == UsageStatus.STALE || snap.status == UsageStatus.ERROR) {
+                StatusBanner(snap.errorMessage ?: "数据异常", snap.status == UsageStatus.STALE)
+            }
+
+            snap.windows.forEach { w -> WindowCard(windowTitle(w.kind), w) }
+
+            snap.modelUsage?.takeIf { it.isNotEmpty() }?.let { items ->
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "模型用量",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        items.forEach { m ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(m.modelCode, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "${m.usage}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text(
+                "最近更新：${formatTime(snap.updatedAt)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> Unit) {
+    val accounts by vm.accounts.collectAsState()
+    val activeId by vm.activeAccountId.collectAsState()
+    Scaffold { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 22.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onBack) { Text("返回") }
+                Spacer(Modifier.size(4.dp))
+                Text("账户管理", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+
+            accounts.forEach { acc ->
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(acc.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    providerLabelOf(acc.providerId),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (acc.accountId == activeId) {
+                                Text(
+                                    "当前",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        Text(
+                            "Key ${vm.maskKeyFor(acc)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            if (acc.accountId != activeId) {
+                                TextButton(onClick = { vm.switchAccount(acc.accountId) }) { Text("切换") }
+                            }
+                            TextButton(
+                                onClick = { vm.removeAccount(acc.accountId) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) { Text("删除") }
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = onAdd,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) { Text("添加账户", fontWeight = FontWeight.SemiBold) }
+
+            OutlinedButton(
+                onClick = { vm.clearConfig() },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text("清除全部账户", fontWeight = FontWeight.SemiBold) }
+
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun AddAccountScreen(vm: UsageViewModel, isFirst: Boolean, onDone: () -> Unit) {
+    val options = vm.providerOptions
+    var providerId by remember { mutableStateOf(options.first().providerId) }
+    val selected = options.first { it.providerId == providerId }
     var region by remember { mutableStateOf(Region.CN) }
+    var key by remember { mutableStateOf("") }
+    var label by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -137,8 +343,9 @@ private fun SetupScreen(vm: UsageViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(8.dp))
+            if (!isFirst) TextButton(onDone) { Text("返回") }
             Text(
-                "智谱 GLM Coding Plan",
+                if (isFirst) "添加第一个账户" else "添加账户",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -148,13 +355,13 @@ private fun SetupScreen(vm: UsageViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Text("套餐区域", style = MaterialTheme.typography.labelLarge)
+            Text("服务商", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Region.entries.forEach { r ->
+                options.forEach { opt ->
                     FilterChip(
-                        selected = region == r,
-                        onClick = { region = r },
-                        label = { Text(if (r == Region.CN) "中国站" else "国际站") },
+                        selected = providerId == opt.providerId,
+                        onClick = { providerId = opt.providerId },
+                        label = { Text(opt.label) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primary,
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimary
@@ -163,17 +370,42 @@ private fun SetupScreen(vm: UsageViewModel) {
                 }
             }
 
+            if (selected.supportsRegion) {
+                Text("区域", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Region.entries.forEach { r ->
+                        FilterChip(
+                            selected = region == r,
+                            onClick = { region = r },
+                            label = { Text(if (r == Region.CN) "中国站" else "国际站") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                label = { Text("Coding Plan API Key") },
+                label = { Text("API Key") },
                 singleLine = true,
                 visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    TextButton(onClick = { showKey = !showKey }) {
-                        Text(if (showKey) "隐藏" else "显示")
-                    }
-                },
+                trailingIcon = { TextButton(onClick = { showKey = !showKey }) { Text(if (showKey) "隐藏" else "显示") } },
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("备注名（可选）") },
+                singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -183,20 +415,20 @@ private fun SetupScreen(vm: UsageViewModel) {
             )
 
             Text(
-                "Key 仅保存在本机并加密存储，不会上传至开发者服务器。",
+                "Key 仅本机加密存储，不上传服务器。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             Button(
                 onClick = {
                     testing = true
                     error = null
-                    vm.setup(key.trim(), region) { ok, msg ->
+                    val regionArg = if (selected.supportsRegion) region.name else null
+                    vm.addAccount(providerId, key.trim(), regionArg, label.trim()) { ok, msg ->
                         testing = false
-                        if (!ok) error = msg ?: "连接失败"
+                        if (ok) onDone() else error = msg ?: "连接失败"
                     }
                 },
                 enabled = key.isNotBlank() && !testing,
@@ -223,256 +455,22 @@ private fun SetupScreen(vm: UsageViewModel) {
 }
 
 @Composable
-private fun UsageScreen(
-    usage: CodingPlanUsage,
-    vm: UsageViewModel,
-    onOpenSettings: () -> Unit
-) {
-    Scaffold { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 22.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        usage.providerLabel ?: "智谱 GLM Coding Plan",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    usage.planName?.takeIf { it.isNotEmpty() }?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                TextButton(onClick = onOpenSettings) {
-                    Text("设置", fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = { vm.refresh() }) {
-                    Text("刷新", fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            if (usage.status == UsageStatus.STALE || usage.status == UsageStatus.ERROR) {
-                StatusBanner(
-                    message = usage.errorMessage ?: "数据异常",
-                    isStale = usage.status == UsageStatus.STALE
-                )
-            }
-
-            WindowCard("5 小时额度", usage.session.usedPercent, usage.session.resetAt)
-            WindowCard("本周额度", usage.weekly.usedPercent, usage.weekly.resetAt)
-
-            usage.modelUsage?.takeIf { it.isNotEmpty() }?.let { items ->
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            "模型用量",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        items.forEach { m ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    m.modelCode,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    "${m.usage}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            Text(
-                "最近更新：${formatTime(usage.updatedAt)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsScreen(vm: UsageViewModel, onClose: () -> Unit) {
-    val maskedKey by vm.maskedKey.collectAsState()
-    Scaffold { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 22.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("返回") }
-                Spacer(Modifier.size(4.dp))
-                Text(
-                    "设置",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            SettingsCard(title = "当前服务商") {
-                Text(
-                    "智谱 GLM Coding Plan",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    "直连 · 实验性",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            SettingsCard(title = "API Key") {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        "状态",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        if (maskedKey.isNotEmpty()) "已配置 $maskedKey" else "未配置",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Spacer(Modifier.size(8.dp))
-                Text(
-                    "本机加密存储（EncryptedSharedPreferences），不上传任何服务器。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            SettingsCard(title = "数据刷新") {
-                InfoLine("后台自动刷新", "每 30 分钟")
-                InfoLine("回到 App", "静默刷新（≥15 分钟）")
-                InfoLine("连续失败", "暂停 6 小时")
-            }
-
-            SettingsCard(title = "关于") {
-                InfoLine("版本", APP_VERSION)
-                InfoLine("用途", "桌面卡片 · 用量实时查")
-                Text(
-                    "多账户管理（Kimi / MiniMax / 火山方舟 等）规划中，见 ROADMAP v2.0。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            OutlinedButton(
-                onClick = { vm.clearConfig() },
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                ),
-                modifier = Modifier.fillMaxWidth().height(50.dp)
-            ) {
-                Text("清除配置并退出登录", fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsCard(title: String, content: @Composable () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            content()
-        }
-    }
-}
-
-@Composable
-private fun InfoLine(label: String, value: String) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(value, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun WindowCard(title: String, usedPercent: Int, resetAt: Long?) {
+private fun WindowCard(title: String, window: NormalizedWindow) {
+    val usedPercent = window.usedPercent
     val remaining = 100 - usedPercent
-    val color by animateColorAsState(
-        targetValue = usageColorFor(usedPercent),
-        label = "usageColor"
-    )
+    val color by animateColorAsState(targetValue = usageColorFor(usedPercent), label = "usageColor")
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column(
-            Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         "$remaining",
@@ -498,7 +496,7 @@ private fun WindowCard(title: String, usedPercent: Int, resetAt: Long?) {
                     .clip(RoundedCornerShape(4.dp))
             )
             Text(
-                if (resetAt != null) "预计 ${formatTime(resetAt)} 恢复" else "重置时间暂不可用",
+                if (window.resetAt != null) "预计 ${formatTime(window.resetAt)} 恢复" else "重置时间暂不可用",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -535,5 +533,3 @@ private fun formatTime(ts: Long): String {
     if (ts <= 0) return "—"
     return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
 }
-
-private const val APP_VERSION = "1.1.0"
