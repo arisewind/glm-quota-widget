@@ -91,6 +91,10 @@ Android 工程:在 [`android/`](android/) 用 `gradlew assembleDebug` 编译(需
 
 详见 [ROADMAP.md](docs/ROADMAP.md)。
 
+## 免责声明
+
+本项目为**开源学习交流**用途，通过用户自己的 API Key 查询各家服务商套餐用量，不收集、不上传、不存储任何凭据至开发者服务器。各用量查询端点均为非公开 / 实验性接口，可能随上游规则变化而失效。本项目**不隶属于**智谱、月之暗面、MiniMax 等任何服务商。如本项目侵犯了任何服务商权益，请提 issue 联系移除。
+
 ## 参考
 
 - [智谱 GLM Coding Plan](https://docs.bigmodel.cn/cn/coding-plan/overview) — 套餐说明

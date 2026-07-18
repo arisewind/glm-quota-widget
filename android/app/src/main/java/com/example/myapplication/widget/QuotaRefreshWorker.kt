@@ -43,6 +43,7 @@ class QuotaRefreshWorker(
             runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }
         }
         WidgetRenderer.refreshFromCache(applicationContext)
+        QuotaListWidgetProvider.refreshAll(applicationContext)
         return Result.success()
     }
 

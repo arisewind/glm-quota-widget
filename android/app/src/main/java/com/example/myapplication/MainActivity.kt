@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 vm.refreshOnForeground()
             }
         })
+        handleAccountIntent(intent, vm)
         setContent {
             MyApplicationTheme {
                 Surface(
@@ -109,6 +111,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 列表 widget 点击行 → 切到对应账户。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAccountIntent(intent, ViewModelProvider(this)[UsageViewModel::class.java])
+    }
+
+    private fun handleAccountIntent(intent: Intent, vm: UsageViewModel) {
+        intent.getStringExtra("account_id")?.let { vm.switchAccount(it) }
     }
 }
 
