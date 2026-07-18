@@ -32,3 +32,4 @@ Thumbs.db
 # 本地截图（真机验证产物，不入库）
 /screenshot_*.png
 /glm_screen.png
+/ui_dump*.xml
