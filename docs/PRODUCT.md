@@ -9,6 +9,10 @@
 
 ---
 
+> **平台演进说明(2026-07-18)**:本 PRD 原按 HarmonyOS 4.2 撰写,后因 DevEco/hvigor 工具链网络死结转为 **Android(Kotlin)** 实现(HarmonyOS 4.2 兼容 APK)。本文档的**产品逻辑**(用量展示、缓存、降级、安全、刷新策略、widget 需求)平台无关、仍然有效;仅平台绑定部分对应替换:HarmonyOS Form 服务卡片 → Android **AppWidget**、HUKS → **EncryptedSharedPreferences / Keystore**、Form 后台任务 → **WorkManager**。Android 实现见 `glmquota` 工程,后续规划见 [ROADMAP.md](ROADMAP.md)。
+
+---
+
 ## 1. 产品概述
 
 GLM Quota Widget 是一个本地优先的 HarmonyOS 轻量工具。用户在 App 内配置自己的 **GLM Coding Plan 专属 API Key** 后，可在 App 和桌面服务卡片中查看最近一次成功查询到的套餐用量。
