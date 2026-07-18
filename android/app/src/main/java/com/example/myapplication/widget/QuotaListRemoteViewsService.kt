@@ -7,12 +7,9 @@ import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.example.myapplication.R
 import com.example.myapplication.domain.Account
-import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.UsageSnapshot
-import com.example.myapplication.domain.WindowKind
-import com.example.myapplication.services.AccountStore
-import com.example.myapplication.services.PrefsCacheStorage
-import com.example.myapplication.services.UsageCache
+import com.example.myapplication.services.AccountRepository
+import com.example.myapplication.services.ServiceProviders
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -38,22 +35,18 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
 
     override fun onCreate() {}
 
-    /** 系统在后台线程调用；runBlocking 拉 AccountStore + 缓存构建行。 */
+    /** 系统在后台线程调用；经 [AccountRepository] 拉账户+缓存构建行（window fallback 已下沉到 primaryPercent）。 */
     override fun onDataSetChanged() {
-        val store = AccountStore(context)
-        val cache = PrefsCacheStorage(context)
+        val repo = AccountRepository(context)
         rows = runBlocking {
-            store.listAccounts().map { acc ->
-                val snap = UsageCache.load(cache, acc.accountId)
-                val used = snap?.window(WindowKind.FIVE_HOUR)?.usedPercent
-                    ?: snap?.windows?.maxOfOrNull { it.usedPercent }
-                    ?: 0
+            repo.allSnapshots().map { item ->
                 Row(
-                    accountId = acc.accountId,
-                    name = acc.label,
-                    sub = buildSub(acc, snap),
-                    usedPercent = used,
-                    brandColor = ServiceProviderInfo.brandColor(acc.providerId)
+                    accountId = item.account.accountId,
+                    name = item.account.label,
+                    sub = buildSub(item.account, item.snapshot),
+                    usedPercent = item.primaryPercent,
+                    brandColor = ServiceProviders.findById(item.account.providerId)?.brandColor
+                        ?: 0xFF8A93A6.toInt()
                 )
             }
         }
@@ -70,12 +63,8 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
         }
     }
 
-    private fun providerLabelOf(providerId: String) = when (providerId) {
-        ServiceProviderInfo.GLM_ID -> ServiceProviderInfo.GLM_LABEL
-        ServiceProviderInfo.KIMI_ID -> ServiceProviderInfo.KIMI_LABEL
-        ServiceProviderInfo.MINIMAX_ID -> ServiceProviderInfo.MINIMAX_LABEL
-        else -> providerId
-    }
+    private fun providerLabelOf(providerId: String) =
+        ServiceProviders.findById(providerId)?.label ?: providerId
 
     override fun getViewAt(position: Int): RemoteViews {
         if (position >= rows.size) return RemoteViews(context.packageName, R.layout.widget_quota_list_item)

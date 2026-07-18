@@ -1,6 +1,6 @@
 # GLM Quota Widget 架构设计
 
-- 文档版本：v2.0（2026-07-19）
+- 文档版本：v2.2（2026-07-19）
 - 状态：已实施
 - 目标平台：Android（Kotlin / Jetpack Compose / AppWidget）
 - 技术栈：AGP 9.3 / Kotlin 2.2.10 / compileSdk 36.1 / minSdk 26 / targetSdk 36
@@ -8,6 +8,8 @@
 - 关联：[PRODUCT.md](PRODUCT.md) / [ROADMAP.md](ROADMAP.md) / [ADR-0001](adr/0001-glm-coding-plan-usage-direct-key.md) / [ADR-0002](adr/0002-multi-provider-normalization.md) / [ADR-0003](adr/0003-kimi-usage-direct.md)
 
 > **平台演进**：本文档 v1.0 按 HarmonyOS 4.2（ArkTS / Form Kit）设计，后因 DevEco/hvigor 工具链网络死结转为 Android（HarmonyOS 4.2 兼容 APK）。v2.0 在 Android 上引入多服务商多账户架构。本文反映 v2.0 实际实现，v1.0 HarmonyOS 设计见 git 历史。
+
+> **v2.2 架构深化**（2026-07-19）：Provider 层由「三家 Provider 类 + `ServiceProvider` 接口 + `Providers` 工厂」折叠为单一 `ServiceProviderConfig` 数据表 + 唯一 fetch 实现；新增 `AccountRepository` 读 facade 收敛「活跃账户选择 + 缓存读取」（消除 `"active_account_id"` 契约复制 3 份）；Worker 读 cache `errorCode` 跳过 stop-code 账户。UI/Widget/缓存总体分层不变，Provider 与账户读路径细节以代码为准，详见 [REVIEW §0](REVIEW.md)。
 
 ---
 

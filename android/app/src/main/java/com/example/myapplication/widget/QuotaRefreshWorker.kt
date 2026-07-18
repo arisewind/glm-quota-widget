@@ -8,10 +8,10 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.example.myapplication.services.AccountStore
+import com.example.myapplication.services.AccountRepository
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
-import com.example.myapplication.services.Providers
+import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageRefreshService
 import java.util.concurrent.TimeUnit
@@ -27,24 +27,25 @@ class QuotaRefreshWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val store = AccountStore(applicationContext)
+        val repo = AccountRepository(applicationContext)
         val settings = SettingsStore(applicationContext)
-        val uiPrefs = applicationContext.getSharedPreferences("glm_quota_ui", Context.MODE_PRIVATE)
+        val cache = PrefsCacheStorage(applicationContext)
+        val http = OkHttpExecutor()
+
+        // 候选2：active 选择收敛到 repository；候选3：跳过 VM 已停止的账户(AUTH/NO_PLAN/UPSTREAM_CHANGED)
         val accounts = if (settings.backgroundRefreshAll()) {
-            store.listAccounts()
+            repo.listAccounts()
         } else {
-            val activeId = uiPrefs.getString("active_account_id", null)
-            listOfNotNull(activeId?.let { store.getAccount(it) })
+            listOfNotNull(repo.explicitActiveAccountId()?.let { repo.getAccount(it) })
         }
         if (accounts.isEmpty()) return Result.success()
 
-        val cache = PrefsCacheStorage(applicationContext)
-        val http = OkHttpExecutor()
         accounts.forEach { account ->
-            val provider = Providers.create(account.providerId)
+            // 候选3：缓存已是 stop-code 错误的账户后台不再重试（避免无意义请求 + 风控）
+            if (UsageRefreshService.isStopCode(repo.snapshotFor(account.accountId)?.errorCode)) return@forEach
             val refreshService = UsageRefreshService(
                 account = account,
-                provider = provider,
+                provider = ServiceProviders.byId(account.providerId),
                 http = http,
                 cacheStorage = cache
             )

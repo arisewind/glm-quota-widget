@@ -1,18 +1,17 @@
 package com.example.myapplication.ui
 
 import android.app.Application
-import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.Credential
-import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.UsageSnapshot
+import com.example.myapplication.services.AccountRepository
 import com.example.myapplication.services.AccountStore
 import com.example.myapplication.services.CacheStorage
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
-import com.example.myapplication.services.Providers
+import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
@@ -45,7 +44,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val accountStore = AccountStore(app)
     private val http = OkHttpExecutor()
     private val cache: CacheStorage = PrefsCacheStorage(app)
-    private val uiPrefs = app.getSharedPreferences("glm_quota_ui", Context.MODE_PRIVATE)
+    private val repository = AccountRepository(app)
     private val settings = SettingsStore(app)
 
     /** 后台刷新是否遍历全部账户（默认 false = 仅 active，省电 + 降低风控）。 */
@@ -69,12 +68,9 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UsageUiState.Loading)
 
-    /** 可添加的服务商列表。 */
-    val providerOptions: List<ProviderOption> = listOf(
-        ProviderOption(ServiceProviderInfo.GLM_ID, ServiceProviderInfo.GLM_LABEL, supportsRegion = true),
-        ProviderOption(ServiceProviderInfo.KIMI_ID, ServiceProviderInfo.KIMI_LABEL, supportsRegion = false),
-        ProviderOption(ServiceProviderInfo.MINIMAX_ID, ServiceProviderInfo.MINIMAX_LABEL, supportsRegion = true)
-    )
+    /** 可添加的服务商列表（从 [ServiceProviders] 注册表派生，加服务商这里自动出现）。 */
+    val providerOptions: List<ProviderOption> =
+        ServiceProviders.all().map { ProviderOption(it.providerId, it.label, it.supportsRegion) }
 
     private val refreshServices = mutableMapOf<String, UsageRefreshService>()
 
@@ -82,10 +78,10 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val list = accountStore.listAccounts()
             _accounts.value = list
-            val activeId = uiPrefs.getString(KEY_ACTIVE, null) ?: list.firstOrNull()?.accountId
+            val activeId = repository.explicitActiveAccountId() ?: list.firstOrNull()?.accountId
             if (activeId != null) {
                 _activeAccountId.value = activeId
-                uiPrefs.edit().putString(KEY_ACTIVE, activeId).apply()
+                repository.setActive(activeId)
                 hydrateAndRefresh(activeId)
             }
         }
@@ -95,7 +91,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         refreshServices.getOrPut(account.accountId) {
             UsageRefreshService(
                 account = account,
-                provider = Providers.create(account.providerId),
+                provider = ServiceProviders.byId(account.providerId),
                 http = http,
                 cacheStorage = cache
             )
@@ -133,7 +129,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     fun switchAccount(accountId: String) {
         viewModelScope.launch {
             _activeAccountId.value = accountId
-            uiPrefs.edit().putString(KEY_ACTIVE, accountId).apply()
+            repository.setActive(accountId)
             _activeSnapshot.value = null
             hydrateAndRefresh(accountId)
         }
@@ -149,7 +145,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             val credential = credentialFor(providerId, key)
-            val provider = Providers.create(providerId)
+            val provider = ServiceProviders.byId(providerId)
             val accountLabel = label?.takeIf { it.isNotBlank() }
                 ?: providerOptions.firstOrNull { it.providerId == providerId }?.label
                 ?: providerId
@@ -172,7 +168,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
                 refreshServices.clear()
                 _accounts.value = accountStore.listAccounts()
                 _activeAccountId.value = account.accountId
-                uiPrefs.edit().putString(KEY_ACTIVE, account.accountId).apply()
+                repository.setActive(account.accountId)
                 onResult(true, null)
                 hydrateAndRefresh(account.accountId)
             } catch (e: UsageProviderException) {
@@ -207,7 +203,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             if (_activeAccountId.value == accountId) {
                 val newActive = list.firstOrNull()?.accountId
                 _activeAccountId.value = newActive
-                uiPrefs.edit().putString(KEY_ACTIVE, newActive).apply()
+                repository.setActive(newActive)
                 _activeSnapshot.value = null
                 if (newActive != null) hydrateAndRefresh(newActive)
             }
@@ -224,7 +220,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             refreshServices.clear()
             _accounts.value = emptyList()
             _activeAccountId.value = null
-            uiPrefs.edit().remove(KEY_ACTIVE).apply()
+            repository.setActive(null)
             _activeSnapshot.value = null
         }
     }
@@ -232,9 +228,5 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     fun maskKeyFor(account: Account): String = accountStore.maskKey(account.credential)
 
     private fun credentialFor(providerId: String, key: String): Credential =
-        if (providerId == ServiceProviderInfo.GLM_ID) Credential.Raw(key) else Credential.Bearer(key)
-
-    companion object {
-        private const val KEY_ACTIVE = "active_account_id"
-    }
+        ServiceProviders.byId(providerId).credentialFor(key)
 }

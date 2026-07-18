@@ -14,7 +14,7 @@ import kotlinx.coroutines.sync.withLock
  */
 class UsageRefreshService(
     private val account: Account,
-    private val provider: ServiceProvider,
+    private val provider: ServiceProviderConfig,
     private val http: HttpExecutor,
     private val cacheStorage: CacheStorage,
     private val now: () -> Long = { System.currentTimeMillis() },
@@ -118,5 +118,8 @@ class UsageRefreshService(
         private const val AUTO_PAUSE_MS = 6 * 60 * 60_000L
         private val STOP_CODES =
             setOf(UsageErrorCode.AUTH, UsageErrorCode.NO_PLAN, UsageErrorCode.UPSTREAM_CHANGED)
+
+        /** 账户需用户介入的错误码；自动刷新（前台/后台）都应跳过。Worker 跳过决策共享此真源（候选3）。 */
+        fun isStopCode(code: UsageErrorCode?): Boolean = code != null && code in STOP_CODES
     }
 }

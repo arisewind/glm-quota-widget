@@ -9,6 +9,23 @@
 
 ---
 
+## 0. v2.2 架构深化（2026-07-19，已实施）
+
+继 v2.1 多账户列表 widget 之后，按 [架构审查报告](architecture-review.html)（deep module / seam / leverage / locality 视角）实施了候选 1/2/3：
+
+| 候选 | 改动 | 收益 |
+|---|---|---|
+| **1. Provider config 化**（Strong） | 三家 Provider 的重复 5 步 fetch 模板折叠为 `ServiceProviderConfig` 数据表 + 唯一 fetch 实现；删 3 个 Provider 类 + `ServiceProvider` 接口 + `Providers` 工厂 + `testConnection` 死方法 | 加服务商从改 6 处（Models/Providers/VM/Factory/credentialFor/parse）变成 config 表加一行；`UsageParser` 的真 depth 显式化 |
+| **2. AccountRepository**（Strong） | 新增读 facade 聚合「账户列表 + 活跃选择 + 缓存读取」；WidgetRenderer/Factory/Worker/VM 四入口收敛 | 消除 `"active_account_id"` 字符串契约复制 3 份；window fallback 业务规则从 Factory 下沉到 `AccountSnapshot.primaryPercent` |
+| **3. Worker skip 停止账户**（修 bug） | Worker 读 cache `errorCode`，跳过 `AUTH/NO_PLAN/UPSTREAM_CHANGED` 账户；stop-code 真源 `UsageRefreshService.isStopCode` 共享 | 修「VM 停止的 AUTH 账户被 Worker 每 30min 无限重试」的潜在 bug（风控/浪费） |
+| ~~4. 内联 CacheStorage~~（Speculative，**跳过**） | — | 只一个 adapter、test leverage 弱；按 YAGNI 第二个 cache adapter 出现再抽 |
+
+**验证**：编译 + 全量单测（GLM/Kimi/MiniMax Provider 全链路 + Parser）绿。候选 4 待第二 adapter 出现再议。
+
+> 注：本次为架构重构（无新功能、无用户可见变化），未做真机回归——真机验证留到 Kimi/MiniMax 借到 Key 时一并做。
+
+---
+
 ## 1. 现状速览
 
 | 维度 | 状态 |

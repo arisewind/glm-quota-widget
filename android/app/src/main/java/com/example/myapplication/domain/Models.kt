@@ -61,7 +61,11 @@ data class Account(
     val isActive: Boolean = true
 )
 
-/** 服务商显示信息（注册表元数据）。扩展时同步 Providers 工厂与 UI provider 选择器。 */
+/**
+ * 服务商稳定 ID / 显示名常量（domain 纯数据，被 [com.example.myapplication.services.ServiceProviders] 引用）。
+ * 其余元数据（url / 认证头 / 品牌色 / parse）集中在 [com.example.myapplication.services.ServiceProviderConfig]，
+ * 加服务商只动那一处 config 表。
+ */
 object ServiceProviderInfo {
     const val GLM_ID = "glm"
     const val KIMI_ID = "kimi"
@@ -69,14 +73,4 @@ object ServiceProviderInfo {
     const val GLM_LABEL = "智谱 GLM Coding Plan"
     const val KIMI_LABEL = "Kimi For Coding"
     const val MINIMAX_LABEL = "MiniMax Coding Plan"
-
-    /** 服务商品牌色（ARGB），用于列表 widget 色条/色点区分账户归属。 */
-    private val BRAND_COLORS = mapOf(
-        GLM_ID to 0xFF00C2B8.toInt(),      // 智谱 GLM 青
-        KIMI_ID to 0xFF7C5CFF.toInt(),     // Kimi 紫
-        MINIMAX_ID to 0xFFF59E0B.toInt(),  // MiniMax 橙
-        "volc" to 0xFFEF4444.toInt()       // 火山方舟 红（v2.1+）
-    )
-
-    fun brandColor(providerId: String): Int = BRAND_COLORS[providerId] ?: 0xFF8A93A6.toInt()
 }

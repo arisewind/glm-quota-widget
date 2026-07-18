@@ -61,7 +61,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModelProvider
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.NormalizedWindow
-import com.example.myapplication.domain.ServiceProviderInfo
+import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.domain.UsageStatus
 import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.Region
@@ -146,12 +146,8 @@ private fun windowTitle(kind: WindowKind) = when (kind) {
     WindowKind.MONTHLY -> "本月额度"
 }
 
-private fun providerLabelOf(providerId: String) = when (providerId) {
-    ServiceProviderInfo.GLM_ID -> ServiceProviderInfo.GLM_LABEL
-    ServiceProviderInfo.KIMI_ID -> ServiceProviderInfo.KIMI_LABEL
-    ServiceProviderInfo.MINIMAX_ID -> ServiceProviderInfo.MINIMAX_LABEL
-    else -> providerId
-}
+private fun providerLabelOf(providerId: String) =
+    ServiceProviders.findById(providerId)?.label ?: providerId
 
 @Composable
 private fun UsageScreen(

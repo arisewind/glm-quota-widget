@@ -1,6 +1,7 @@
 package com.example.myapplication.services
 
 import com.example.myapplication.domain.Credential
+import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.UsageErrorCode
 import com.example.myapplication.domain.WindowKind
 import kotlinx.coroutines.runBlocking
@@ -8,8 +9,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** GLM Provider 全链路测试（mock HttpExecutor，验 URL/认证头/错误映射，无真实网络）。 */
+/** GLM 全链路测试：经 [ServiceProviders] GLM config + mock HttpExecutor，验 URL/认证头/错误映射，无真实网络。 */
 class GlmUsageProviderTest {
+
+    private val glm get() = ServiceProviders.byId(ServiceProviderInfo.GLM_ID)
 
     private class FakeHttp(
         val status: Int,
@@ -34,7 +37,7 @@ class GlmUsageProviderTest {
     fun fetchUsage_cn_success() {
         val http = FakeHttp(200, sample)
         val snap = runBlocking {
-            GlmUsageProvider(now = { 1000L }).fetchUsage(Credential.Raw("key"), "CN", http)
+            glm.fetchUsage(Credential.Raw("key"), "CN", http, now = { 1000L })
         }
         assertEquals("glm", snap.providerId)
         assertEquals(5, snap.window(WindowKind.FIVE_HOUR)!!.usedPercent)
@@ -45,14 +48,14 @@ class GlmUsageProviderTest {
     @Test
     fun fetchUsage_intl_url() {
         val http = FakeHttp(200, sample)
-        runBlocking { GlmUsageProvider(now = { 1L }).fetchUsage(Credential.Raw("key"), "INTL", http) }
+        runBlocking { glm.fetchUsage(Credential.Raw("key"), "INTL", http, now = { 1L }) }
         assertEquals("https://api.z.ai/api/monitor/usage/quota/limit", http.capturedUrl)
     }
 
     @Test
     fun fetchUsage_401_throwsAuth() {
         try {
-            runBlocking { GlmUsageProvider().fetchUsage(Credential.Raw("k"), "CN", FakeHttp(401, "")) }
+            runBlocking { glm.fetchUsage(Credential.Raw("k"), "CN", FakeHttp(401, "")) }
             fail()
         } catch (e: UsageProviderException) {
             assertEquals(UsageErrorCode.AUTH, e.mapped.code)
@@ -62,7 +65,7 @@ class GlmUsageProviderTest {
     @Test
     fun fetchUsage_network_throwsNetwork() {
         try {
-            runBlocking { GlmUsageProvider().fetchUsage(Credential.Raw("k"), "CN", FakeHttp(0, "", throwException = true)) }
+            runBlocking { glm.fetchUsage(Credential.Raw("k"), "CN", FakeHttp(0, "", throwException = true)) }
             fail()
         } catch (e: UsageProviderException) {
             assertEquals(UsageErrorCode.NETWORK, e.mapped.code)
@@ -73,7 +76,7 @@ class GlmUsageProviderTest {
     fun fetchUsage_wrongCredential_throwsNoPlan() {
         // GLM 需 Raw 凭据，传 Bearer 应映射 NO_PLAN
         try {
-            runBlocking { GlmUsageProvider().fetchUsage(Credential.Bearer("k"), "CN", FakeHttp(200, sample)) }
+            runBlocking { glm.fetchUsage(Credential.Bearer("k"), "CN", FakeHttp(200, sample)) }
             fail()
         } catch (e: UsageProviderException) {
             assertEquals(UsageErrorCode.NO_PLAN, e.mapped.code)

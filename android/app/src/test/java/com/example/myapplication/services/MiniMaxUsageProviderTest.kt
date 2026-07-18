@@ -1,13 +1,16 @@
 package com.example.myapplication.services
 
 import com.example.myapplication.domain.Credential
+import com.example.myapplication.domain.ServiceProviderInfo
 import com.example.myapplication.domain.WindowKind
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** MiniMax Provider 全链路测试（mock HttpExecutor，验 CN/INTL URL + 剩余%反转）。 */
+/** MiniMax 全链路测试：经 [ServiceProviders] MiniMax config + mock HttpExecutor，验 CN/INTL URL + 剩余%反转。 */
 class MiniMaxUsageProviderTest {
+
+    private val minimax get() = ServiceProviders.byId(ServiceProviderInfo.MINIMAX_ID)
 
     private class FakeHttp(val status: Int, val body: String) : HttpExecutor {
         var capturedUrl: String? = null
@@ -25,7 +28,7 @@ class MiniMaxUsageProviderTest {
     fun fetchUsage_cn_success() {
         val http = FakeHttp(200, sample)
         val snap = runBlocking {
-            MiniMaxUsageProvider(now = { 1L }).fetchUsage(Credential.Bearer("k"), "CN", http)
+            minimax.fetchUsage(Credential.Bearer("k"), "CN", http, now = { 1L })
         }
         assertEquals("minimax", snap.providerId)
         assertEquals(5, snap.window(WindowKind.FIVE_HOUR)!!.usedPercent) // 100 - 95
@@ -35,7 +38,7 @@ class MiniMaxUsageProviderTest {
     @Test
     fun fetchUsage_intl_url() {
         val http = FakeHttp(200, sample)
-        runBlocking { MiniMaxUsageProvider(now = { 1L }).fetchUsage(Credential.Bearer("k"), "INTL", http) }
+        runBlocking { minimax.fetchUsage(Credential.Bearer("k"), "INTL", http, now = { 1L }) }
         assertEquals("https://api.minimax.io/v1/api/openplatform/coding_plan/remains", http.capturedUrl)
     }
 }

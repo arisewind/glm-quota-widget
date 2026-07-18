@@ -12,9 +12,7 @@ import com.example.myapplication.R
 import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.UsageStatus
 import com.example.myapplication.domain.WindowKind
-import com.example.myapplication.services.AccountStore
-import com.example.myapplication.services.PrefsCacheStorage
-import com.example.myapplication.services.UsageCache
+import com.example.myapplication.services.AccountRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,16 +45,11 @@ object WidgetRenderer {
     /** 读活跃账户缓存并刷新所有 widget 实例。 */
     fun refreshFromCache(context: Context) {
         scope.launch {
-            val store = AccountStore(context)
-            val uiPrefs = context.getSharedPreferences("glm_quota_ui", Context.MODE_PRIVATE)
-            var activeId = uiPrefs.getString("active_account_id", null)
-            if (activeId == null) activeId = store.listAccounts().firstOrNull()?.accountId
-            val snapshot = activeId?.let { UsageCache.load(PrefsCacheStorage(context), it) }
-            val account = activeId?.let { store.getAccount(it) }
+            val active = AccountRepository(context).activeSnapshot()
             val manager = AppWidgetManager.getInstance(context)
             val provider = ComponentName(context, QuotaWidgetProvider::class.java)
             manager.getAppWidgetIds(provider).forEach {
-                render(context, manager, it, snapshot, account?.label)
+                render(context, manager, it, active?.snapshot, active?.account?.label)
             }
         }
     }
