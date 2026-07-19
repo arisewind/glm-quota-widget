@@ -3,12 +3,14 @@ package com.example.myapplication
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Paint
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,7 +54,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -67,6 +75,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.NormalizedWindow
 import com.example.myapplication.services.ServiceProviders
+import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.domain.UsageStatus
 import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.Region
@@ -159,6 +168,92 @@ private fun windowTitle(kind: WindowKind) = when (kind) {
     WindowKind.MONTHLY -> "本月额度"
 }
 
+/** 7 天用量趋势（v3.1，Compose Canvas 自绘：时间驱动 X 轴固定 7 天日期 + 参考线 + 85% 告警线 + 渐变面积 + 末点标注；重置日置卡片右下角）。 */
+@Composable
+private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long?) {
+    val dateFmt = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("7天用量趋势", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Canvas(Modifier.fillMaxWidth().padding(horizontal = 6.dp).height(108.dp)) {
+                val w = size.width
+                val h = size.height
+                val n = points.size
+                if (n < 2) return@Canvas
+                val padL = 30.dp.toPx()
+                val padB = 18.dp.toPx()
+                val padT = 14.dp.toPx()
+                val plotW = w - padL
+                val plotTop = padT
+                val plotBottom = h - padB
+                val plotH = plotBottom - plotTop
+                fun py(p: Int) = plotBottom - (p / 100f) * plotH
+
+                // X 轴：最近 7 天（含今天）固定日期刻度；数据点按索引等距（trend-final 样式）
+                val dayMs = 86_400_000L
+                val cal = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val startMs = cal.timeInMillis   // 本地今天 00:00（避免 UTC 天桶的时区偏移）
+                fun px(i: Int) = padL + i * plotW / (n - 1)
+
+                val native = drawContext.canvas.nativeCanvas
+                val gridPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
+                val warnPaint = Paint().apply { color = 0xFFFF6B6B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
+                val ptPaint = Paint().apply { color = 0xFF00C2B8.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
+                val xPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
+
+                // Y 轴参考线 0/100
+                listOf(0, 100).forEach { p ->
+                    val y = py(p)
+                    drawLine(Color(0xFF334155), Offset(padL, y), Offset(w, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+                    native.drawText("$p", 0f, y + 3.dp.toPx(), gridPaint)
+                }
+                // 85% 告警线，标签入 Y 轴左侧栏
+                val wy = py(85)
+                drawLine(Color(0xFFFF6B6B), Offset(padL, wy), Offset(w, wy), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 5f)))
+                native.drawText("85", 0f, wy + 3.dp.toPx(), warnPaint)
+                // 面积 + 折线（点按索引等距）
+                val line = Path().apply {
+                    moveTo(px(0), py(points[0].percent))
+                    for (i in 1 until n) lineTo(px(i), py(points[i].percent))
+                }
+                val area = Path().apply { addPath(line); lineTo(px(n - 1), plotBottom); lineTo(px(0), plotBottom); close() }
+                drawPath(area, Brush.verticalGradient(listOf(UsageSafe.copy(alpha = 0.4f), UsageSafe.copy(alpha = 0.02f)), startY = plotTop, endY = plotBottom))
+                drawPath(line, UsageSafe, style = Stroke(width = 2.dp.toPx()))
+                // 末点 + 数值标注
+                val lx = px(n - 1)
+                val ly = py(points[n - 1].percent)
+                drawCircle(UsageSafe, 4.dp.toPx(), Offset(lx, ly))
+                ptPaint.textAlign = Paint.Align.RIGHT
+                native.drawText("${points[n - 1].percent}%", lx, ly - 8.dp.toPx(), ptPaint)
+                // X 轴：固定 7 天日期刻度（首尾对齐边缘防溢出）
+                for (i in 0..6) {
+                    val ts = startMs - (6 - i) * dayMs
+                    val x = padL + (i.toFloat() / 6) * plotW
+                    xPaint.textAlign = when {
+                        i == 0 -> Paint.Align.LEFT
+                        i == 6 -> Paint.Align.RIGHT
+                        else -> Paint.Align.CENTER
+                    }
+                    native.drawText(dateFmt.format(Date(ts)), x, h - 4.dp.toPx(), xPaint)
+                }
+            }
+            // 重置日置卡片右下角（删「最近 7 天采样」字样）
+            resetAt?.takeIf { it > 0 }?.let {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text("↻重置 ${dateFmt.format(Date(it))}", style = MaterialTheme.typography.bodySmall, color = UsageSafe, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
 private fun providerLabelOf(providerId: String) =
     ServiceProviders.findById(providerId)?.label ?: providerId
 
@@ -224,6 +319,9 @@ private fun UsageScreen(
             }
 
             snap.windows.forEach { w -> WindowCard(windowTitle(w.kind), w) }
+
+            val weeklyHist by vm.weeklyHistory.collectAsState()
+            if (weeklyHist.size >= 2) WeeklyTrendCard(weeklyHist, snap.window(WindowKind.WEEKLY)?.resetAt)
 
             snap.modelUsage?.takeIf { it.isNotEmpty() }?.let { items ->
                 Card(

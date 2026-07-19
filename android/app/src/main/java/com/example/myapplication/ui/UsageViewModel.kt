@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.Credential
 import com.example.myapplication.domain.UsageSnapshot
+import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.AccountRepository
 import com.example.myapplication.services.AccountStore
 import com.example.myapplication.services.CacheStorage
@@ -14,6 +15,7 @@ import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageAlerter
+import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
 import com.example.myapplication.widget.QuotaListWidgetProvider
@@ -50,6 +52,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val repository = AccountRepository(app)
     private val settings = SettingsStore(app)
     private val alerter = UsageAlerter(app)
+    private val historyStore = UsageHistoryStore(app)
 
     /** 后台刷新是否遍历全部账户（默认 false = 仅 active，省电 + 降低风控）。 */
     private val _backgroundRefreshAll = MutableStateFlow(settings.backgroundRefreshAll())
@@ -58,6 +61,10 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     /** 额度告警开关（默认开）：关则刷新后不发通知。 */
     private val _alertEnabled = MutableStateFlow(settings.alertEnabled())
     val alertEnabled: StateFlow<Boolean> = _alertEnabled
+
+    /** 当前活跃账户的周窗用量历史（v3.1 趋势折线用）。 */
+    private val _weeklyHistory = MutableStateFlow<List<UsageHistoryStore.Point>>(emptyList())
+    val weeklyHistory: StateFlow<List<UsageHistoryStore.Point>> = _weeklyHistory
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
@@ -107,6 +114,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun hydrateAndRefresh(accountId: String) {
         val account = _accounts.value.firstOrNull { it.accountId == accountId } ?: return
+        _weeklyHistory.value = historyStore.read(accountId)
         val rs = refreshServiceFor(account)
         val cached = rs.hydrateFromCache()
         if (cached != null) _activeSnapshot.value = cached
@@ -121,6 +129,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val snap = rs.refresh(UsageRefreshService.Reason.MANUAL)
             _activeSnapshot.value = snap
             alerter.check(snap, account)
+            appendWeekly(account.accountId, snap)
             notifyWidgets()
         }
     }
@@ -134,6 +143,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val snap = rs.refresh(UsageRefreshService.Reason.FOREGROUND)
             _activeSnapshot.value = snap
             alerter.check(snap, account)
+            appendWeekly(account.accountId, snap)
             notifyWidgets()
         }
     }
@@ -219,6 +229,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             cache.clear(accountId)
             refreshServices.remove(accountId)
             alerter.onAccountRemoved(accountId)
+            historyStore.clearAccount(accountId)
             val list = accountStore.listAccounts()
             _accounts.value = list
             if (_activeAccountId.value == accountId) {
@@ -258,5 +269,12 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         WidgetRenderer.refreshFromCache(ctx)
         QuotaListWidgetProvider.refreshAll(ctx)
+    }
+
+    /** 追加周窗历史采样点 + 刷新趋势 state（供 UI 折线）。无周窗快照则跳过。 */
+    private fun appendWeekly(accountId: String, snap: UsageSnapshot) {
+        val weekly = snap.window(WindowKind.WEEKLY)?.usedPercent ?: return
+        historyStore.append(accountId, weekly, snap.updatedAt)
+        _weeklyHistory.value = historyStore.read(accountId)
     }
 }

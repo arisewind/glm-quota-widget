@@ -8,12 +8,14 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.AccountRepository
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageAlerter
+import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.services.UsageRefreshService
 import java.util.concurrent.TimeUnit
 
@@ -31,6 +33,7 @@ class QuotaRefreshWorker(
         val repo = AccountRepository(applicationContext)
         val settings = SettingsStore(applicationContext)
         val alerter = UsageAlerter(applicationContext)
+        val historyStore = UsageHistoryStore(applicationContext)
         val cache = PrefsCacheStorage(applicationContext)
         val http = OkHttpExecutor()
 
@@ -52,7 +55,10 @@ class QuotaRefreshWorker(
                 cacheStorage = cache
             )
             val snap = runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }.getOrNull()
-            if (snap != null) alerter.check(snap, account)
+            if (snap != null) {
+                alerter.check(snap, account)
+                snap.window(WindowKind.WEEKLY)?.let { historyStore.append(account.accountId, it.usedPercent, snap.updatedAt) }
+            }
         }
         WidgetRenderer.refreshFromCache(applicationContext)
         QuotaListWidgetProvider.refreshAll(applicationContext)
