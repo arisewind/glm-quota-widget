@@ -15,6 +15,8 @@ import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
+import com.example.myapplication.widget.QuotaListWidgetProvider
+import com.example.myapplication.widget.WidgetRenderer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -112,6 +114,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val rs = refreshServiceFor(account)
             val snap = rs.refresh(UsageRefreshService.Reason.MANUAL)
             _activeSnapshot.value = snap
+            notifyWidgets()
         }
     }
 
@@ -123,6 +126,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val rs = refreshServiceFor(account)
             val snap = rs.refresh(UsageRefreshService.Reason.FOREGROUND)
             _activeSnapshot.value = snap
+            notifyWidgets()
         }
     }
 
@@ -131,6 +135,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             _activeAccountId.value = accountId
             repository.setActive(accountId)
             _activeSnapshot.value = null
+            notifyWidgets()
             hydrateAndRefresh(accountId)
         }
     }
@@ -170,6 +175,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
                 _activeAccountId.value = account.accountId
                 repository.setActive(account.accountId)
                 onResult(true, null)
+                notifyWidgets()
                 hydrateAndRefresh(account.accountId)
             } catch (e: UsageProviderException) {
                 onResult(false, e.mapped.message)
@@ -185,6 +191,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             accountStore.saveAccount(acc.copy(label = trimmed))
             refreshServices.clear()
             _accounts.value = accountStore.listAccounts()
+            notifyWidgets()
         }
     }
 
@@ -207,6 +214,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
                 _activeSnapshot.value = null
                 if (newActive != null) hydrateAndRefresh(newActive)
             }
+            notifyWidgets()
         }
     }
 
@@ -222,6 +230,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             _activeAccountId.value = null
             repository.setActive(null)
             _activeSnapshot.value = null
+            notifyWidgets()
         }
     }
 
@@ -229,4 +238,11 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun credentialFor(providerId: String, key: String): Credential =
         ServiceProviders.byId(providerId).credentialFor(key)
+
+    /** 通知桌面 widget 重读缓存重渲染（App 内数据/账户变更后调用，让卡片立即跟上，不增网络请求）。 */
+    private fun notifyWidgets() {
+        val ctx = getApplication<Application>()
+        WidgetRenderer.refreshFromCache(ctx)
+        QuotaListWidgetProvider.refreshAll(ctx)
+    }
 }
