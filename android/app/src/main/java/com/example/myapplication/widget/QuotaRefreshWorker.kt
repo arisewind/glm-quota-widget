@@ -13,6 +13,7 @@ import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
+import com.example.myapplication.services.UsageAlerter
 import com.example.myapplication.services.UsageRefreshService
 import java.util.concurrent.TimeUnit
 
@@ -29,6 +30,7 @@ class QuotaRefreshWorker(
     override suspend fun doWork(): Result {
         val repo = AccountRepository(applicationContext)
         val settings = SettingsStore(applicationContext)
+        val alerter = UsageAlerter(applicationContext)
         val cache = PrefsCacheStorage(applicationContext)
         val http = OkHttpExecutor()
 
@@ -49,7 +51,8 @@ class QuotaRefreshWorker(
                 http = http,
                 cacheStorage = cache
             )
-            runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }
+            val snap = runCatching { refreshService.refresh(UsageRefreshService.Reason.BACKGROUND) }.getOrNull()
+            if (snap != null) alerter.check(snap, account)
         }
         WidgetRenderer.refreshFromCache(applicationContext)
         QuotaListWidgetProvider.refreshAll(applicationContext)

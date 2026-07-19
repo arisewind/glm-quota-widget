@@ -1,6 +1,9 @@
 package com.example.myapplication
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -54,6 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -80,6 +85,14 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Android 13+ 需运行时申请通知权限（额度告警 v3.0 用）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001
+            )
+        }
         val vm = ViewModelProvider(this)[UsageViewModel::class.java]
         // App 回前台时静默刷新（FOREGROUND reason，自带 15min 节流）。
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -253,6 +266,7 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
     val accounts by vm.accounts.collectAsState()
     val activeId by vm.activeAccountId.collectAsState()
     val refreshAll by vm.backgroundRefreshAll.collectAsState()
+    val alertEnabled by vm.alertEnabled.collectAsState()
     var renaming by remember { mutableStateOf<Account?>(null) }
 
     Scaffold { padding ->
@@ -291,6 +305,29 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
                         )
                     }
                     Switch(checked = refreshAll, onCheckedChange = { vm.setBackgroundRefreshAll(it) })
+                }
+            }
+
+            // 额度告警设置
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("额度告警", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "用量 ≥85% 提醒、100% 紧急通知",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = alertEnabled, onCheckedChange = { vm.setAlertEnabled(it) })
                 }
             }
 

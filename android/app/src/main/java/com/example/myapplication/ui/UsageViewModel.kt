@@ -13,6 +13,7 @@ import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
+import com.example.myapplication.services.UsageAlerter
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
 import com.example.myapplication.widget.QuotaListWidgetProvider
@@ -48,10 +49,15 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val cache: CacheStorage = PrefsCacheStorage(app)
     private val repository = AccountRepository(app)
     private val settings = SettingsStore(app)
+    private val alerter = UsageAlerter(app)
 
     /** 后台刷新是否遍历全部账户（默认 false = 仅 active，省电 + 降低风控）。 */
     private val _backgroundRefreshAll = MutableStateFlow(settings.backgroundRefreshAll())
     val backgroundRefreshAll: StateFlow<Boolean> = _backgroundRefreshAll
+
+    /** 额度告警开关（默认开）：关则刷新后不发通知。 */
+    private val _alertEnabled = MutableStateFlow(settings.alertEnabled())
+    val alertEnabled: StateFlow<Boolean> = _alertEnabled
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
@@ -114,6 +120,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val rs = refreshServiceFor(account)
             val snap = rs.refresh(UsageRefreshService.Reason.MANUAL)
             _activeSnapshot.value = snap
+            alerter.check(snap, account)
             notifyWidgets()
         }
     }
@@ -126,6 +133,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             val rs = refreshServiceFor(account)
             val snap = rs.refresh(UsageRefreshService.Reason.FOREGROUND)
             _activeSnapshot.value = snap
+            alerter.check(snap, account)
             notifyWidgets()
         }
     }
@@ -200,11 +208,17 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         _backgroundRefreshAll.value = all
     }
 
+    fun setAlertEnabled(enabled: Boolean) {
+        settings.setAlertEnabled(enabled)
+        _alertEnabled.value = enabled
+    }
+
     fun removeAccount(accountId: String) {
         viewModelScope.launch {
             accountStore.removeAccount(accountId)
             cache.clear(accountId)
             refreshServices.remove(accountId)
+            alerter.onAccountRemoved(accountId)
             val list = accountStore.listAccounts()
             _accounts.value = list
             if (_activeAccountId.value == accountId) {

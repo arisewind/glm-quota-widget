@@ -14,7 +14,15 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_BG_ALL, all).apply()
     }
 
+    /** 额度告警开关（v3.0）：默认开。关则不检查不发通知。 */
+    fun alertEnabled(): Boolean = prefs.getBoolean(KEY_ALERT, true)
+
+    fun setAlertEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ALERT, enabled).apply()
+    }
+
     companion object {
         private const val KEY_BG_ALL = "bg_refresh_all"
+        private const val KEY_ALERT = "alert_enabled"
     }
 }
