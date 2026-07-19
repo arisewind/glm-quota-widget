@@ -1,6 +1,6 @@
 # ADR-0003：Kimi For Coding 用量查询直连（v2.0 第二家）
 
-- 状态：Proposed（v2.0 阶段 B 接入，作通用模型 go/no-go 关卡）
+- 状态：Accepted（v2.0 阶段 B 已接入，通用模型 go/no-go 关卡已通过）
 - 日期：2026-07-18
 - 关联：[ADR-0001](0001-glm-coding-plan-usage-direct-key.md) / [ADR-0002](0002-multi-provider-normalization.md) / [v2-provider-research.md](../v2-provider-research.md)
 

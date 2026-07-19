@@ -1,6 +1,6 @@
 # ADR-0002：多服务商用量数据归一化模型（v2.0 架构）
 
-- 状态：Proposed（待 v2.0 阶段 A 实施）
+- 状态：Accepted（v2.0 阶段 A 已实施；v2.2 进一步 config 化，见 REVIEW §0）
 - 日期：2026-07-18
 - 关联：[ADR-0001](0001-glm-coding-plan-usage-direct-key.md) / [ROADMAP.md](../../ROADMAP.md) §3.2 / [v2-provider-research.md](../v2-provider-research.md)
 

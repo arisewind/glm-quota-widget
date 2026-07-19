@@ -1,7 +1,7 @@
 # GLM Quota Widget — 项目审阅与评估
 
 - 审阅日期：2026-07-19
-- 审阅范围：v2.0 多服务商架构（commit 877e67c）
+- 审阅范围：v2.0 多服务商架构 + v2.1 列表 widget + v2.2 架构深化（详见 §0；最新 commit 见 git log）
 - 方法：产品 + 架构 + 风险三视角
 - 关联：[PRODUCT.md](PRODUCT.md) / [ARCHITECTURE.md](ARCHITECTURE.md) / [ROADMAP.md](ROADMAP.md) / [ADR-0002](adr/0002-multi-provider-normalization.md)
 
@@ -32,7 +32,7 @@
 |---|---|
 | 功能 | GLM + Kimi + MiniMax 三家 Provider，多账户架构 + 账户管理 UI |
 | 验证 | GLM：编译 + 单测 + **真机回归全过**；Kimi/MiniMax：编译 + 单测过，**零真机** |
-| 文档 | ADR + ROADMAP + RESEARCH + README + ARCHITECTURE 均同步 v2.0 |
+| 文档 | ADR + ROADMAP + RESEARCH + README + ARCHITECTURE 均同步 v2.2（v2.2 架构深化见 §0） |
 
 ---
 
@@ -61,8 +61,8 @@
 
 ### 🟢 体验 / 功能
 
-6. **多账户价值未发挥** —— widget 还是单账户，阶段 D（多账户列表 widget）没做。多账户是 v2.0 核心，但桌面卡片没体现。
-7. 账户切换是 chip（账户多了挤）、无重命名 / 改 Key（要删重建）、Worker 遍历刷新所有账户（多账户时耗电 + 风控压力）。
+6. ~~多账户价值未发挥~~ **✅ 已解决（v2.1）** —— 阶段 D 多账户列表 widget 已完成（`QuotaListWidgetProvider` + 卡片式 + 品牌色条 + ListView 系统管滚动，账户数任意不崩）。
+7. ~~账户切换是 chip、无重命名、Worker 遍历所有账户~~ **部分已解决（v2.1/v2.2）** —— 重命名已实现（`renameAccount`，label 唯一性校验）；Worker 默认仅刷 active + skip stop-code 账户（`SettingsStore.backgroundRefreshAll` 开关）。**仍待办**：账户切换仍是 chip（账户多时挤）、改 Key 仍要删重建。
 
 ---
 
@@ -78,7 +78,7 @@
 |---|---|
 | 🔴 P0 | Kimi / MiniMax 真机验证（找 Key 或有 plan 用户代测）—— 填发布前最大空缺 |
 | 🔴 P0 | 合规确认（至少 GLM ToS）—— 上架前必须 |
-| 🟡 P1 | 阶段 D 多账户 widget —— 兑现多账户价值 |
+| ✅ 已完成 | ~~阶段 D 多账户 widget~~ —— v2.1 已完成（列表 widget + 账户重命名 + Worker 仅刷 active） |
 | 🟡 P1 | 补集成测试（Provider mock 全链路） |
 | 🟢 P2 | TS src 去留决策 |
 

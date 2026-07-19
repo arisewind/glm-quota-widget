@@ -7,7 +7,7 @@
 - 工程位置：仓库 [`android/`](../android/)
 - 关联：[PRODUCT.md](PRODUCT.md) / [ROADMAP.md](ROADMAP.md) / [ADR-0001](adr/0001-glm-coding-plan-usage-direct-key.md) / [ADR-0002](adr/0002-multi-provider-normalization.md) / [ADR-0003](adr/0003-kimi-usage-direct.md)
 
-> **平台演进**：本文档 v1.0 按 HarmonyOS 4.2（ArkTS / Form Kit）设计，后因 DevEco/hvigor 工具链网络死结转为 Android（HarmonyOS 4.2 兼容 APK）。v2.0 在 Android 上引入多服务商多账户架构。本文反映 v2.0 实际实现，v1.0 HarmonyOS 设计见 git 历史。
+> **平台演进**：本文档 v1.0 按 HarmonyOS 4.2（ArkTS / Form Kit）设计，后因 DevEco/hvigor 工具链网络死结转为 Android（HarmonyOS 4.2 兼容 APK）。v2.0 在 Android 上引入多服务商多账户架构。本文反映 v2.2 实际实现（含 v2.2 架构深化），v1.0 HarmonyOS 设计见 git 历史。
 
 > **v2.2 架构深化**（2026-07-19）：Provider 层由「三家 Provider 类 + `ServiceProvider` 接口 + `Providers` 工厂」折叠为单一 `ServiceProviderConfig` 数据表 + 唯一 fetch 实现；新增 `AccountRepository` 读 facade 收敛「活跃账户选择 + 缓存读取」（消除 `"active_account_id"` 契约复制 3 份）；Worker 读 cache `errorCode` 跳过 stop-code 账户。UI/Widget/缓存总体分层不变，Provider 与账户读路径细节以代码为准，详见 [REVIEW §0](REVIEW.md)。
 
@@ -19,7 +19,7 @@
 
 **不做**：模型对话、云端存储、账号体系、高频刷新、收集 Cookie/密码。
 
-当前支持：**智谱 GLM**（ADR-0001，已真机验证）、**Kimi**（ADR-0003）、**MiniMax**（v2-provider-research）。火山方舟 / ZenMux 延后 v2.1+。
+当前支持：**智谱 GLM**（ADR-0001，已真机验证）、**Kimi**（ADR-0003）、**MiniMax**（v2-provider-research）。火山方舟 / ZenMux 延后 v2.3+。
 
 ---
 
@@ -54,20 +54,20 @@
 │                                                                   │
 │  UI 层 (ui/)                       Widget 层 (widget/)            │
 │  ┌───────────────────┐            ┌─────────────────────────┐   │
-│  │ MainActivity      │            │ QuotaWidgetProvider     │   │
-│  │  ├ UsageScreen    │            │  └ WidgetRenderer       │   │
-│  │  ├ AccountsScreen │            │ QuotaRefreshWorker      │   │
-│  │  └ AddAccountScr  │            │  (遍历所有账户刷新)      │   │
-│  └─────────┬─────────┘            └────────────┬────────────┘   │
-│            │  UsageViewModel (多账户 state)      │                │
-│            ▼                                     ▼                │
+│  │ MainActivity      │            │ QuotaWidgetProvider      │   │
+│  │  ├ UsageScreen    │            │  └ WidgetRenderer        │   │
+│  │  ├ AccountsScreen │            │ QuotaListWidgetProvider  │   │
+│  │  └ AddAccountScr  │            │  └ QuotaListRemoteViews… │   │
+│  └─────────┬─────────┘            │ QuotaRefreshWorker       │   │
+│            │ UsageViewModel        │  (默认仅刷 active +       │   │
+│            │  (notifyWidgets)      │   skip stop-code 账户)   │   │
+│            ▼                      └────────────┬────────────┘   │
 │  服务层 (services/) ─────────────────────────────────────────  │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ UsageRefreshService (per-account 节流/退避/停止)          │ │
-│  │ ServiceProvider 抽象 + Providers 注册表                  │ │
-│  │   ├ GlmUsageProvider    (ADR-0001)                        │ │
-│  │   ├ KimiUsageProvider   (ADR-0003)                        │ │
-│  │   └ MiniMaxUsageProvider                                 │ │
+│  │ ServiceProviderConfig 数据表 + ServiceProviders 注册表   │ │
+│  │   ├ glm() / kimi() / minimax()   (config 化，v2.2)       │ │
+│  │ AccountRepository (读 facade: active 选择 + 缓存读取)    │ │
 │  │ AccountStore (加密多账户) + UsageCache (schemaV2 分键)   │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │            │                                                      │
@@ -138,24 +138,30 @@ data class Account(
 ## 5. Provider 架构
 
 ```kotlin
-interface ServiceProvider {
-    val providerId: String
-    val label: String
-    val supportsRegion: Boolean
-    suspend fun fetchUsage(credential: Credential, region: String?, http: HttpExecutor): UsageSnapshot
+class ServiceProviderConfig(
+    val providerId: String,
+    val label: String,
+    val supportsRegion: Boolean,
+    val credentialType: CredentialType,   // RAW(直接Key) / BEARER
+    val brandColor: Int,
+    private val baseUrl: (region: String?) -> String,
+    private val path: String,
+    private val extraHeaders: Map<String, String>,
+    private val parse: (body: String, now: Long) -> UsageSnapshot
+) {
+    suspend fun fetchUsage(credential, region, http, now): UsageSnapshot  // 唯一 5 步 fetch 实现
 }
 
-object Providers {
-    fun create(providerId: String): ServiceProvider = when (providerId) {
-        ServiceProviderInfo.GLM_ID -> GlmUsageProvider()
-        ServiceProviderInfo.KIMI_ID -> KimiUsageProvider()
-        ServiceProviderInfo.MINIMAX_ID -> MiniMaxUsageProvider()
-        else -> throw IllegalArgumentException("未知 provider")
-    }
+object ServiceProviders {
+    fun all(): List<ServiceProviderConfig> = listOf(glm(), kimi(), minimax())
+    fun byId(id: String): ServiceProviderConfig
+    fun findById(id: String): ServiceProviderConfig?
+    private fun glm() = ServiceProviderConfig(... parse = UsageParser::parseGlm)
+    // kimi() / minimax() 同构
 }
 ```
 
-Provider **无状态**，凭据/region/HttpExecutor 由调用方注入（便于 mock 测试）。加新服务商 = 实现 `ServiceProvider` + 注册 `Providers` + UI providerOptions，**不动 UI 渲染 / widget / 缓存**（Provider 隔离红利）。
+v2.2 把原「三家 Provider 类 + `ServiceProvider` 接口 + `Providers` 工厂」折叠为单一 `ServiceProviderConfig` 数据表（url / headers / credentialType / brandColor / parse）+ 唯一 fetch 实现。凭据 / region / HttpExecutor 由调用方注入（便于 mock 测试）。**加新服务商 = `ServiceProviders.all()` 加一个工厂函数 + `UsageParser` 加一个 parse 函数**，全栈可见、不再发散 6 处，不动 UI 渲染 / widget / 缓存（Provider 隔离红利）。
 
 各家契约见 ADR-0001（GLM）/ ADR-0003（Kimi）/ [v2-provider-research.md](v2-provider-research.md)（MiniMax/火山/ZenMux）。
 
@@ -166,11 +172,12 @@ Provider **无状态**，凭据/region/HttpExecutor 由调用方注入（便于 
 | 组件 | 职责 |
 |---|---|
 | `AccountStore` | EncryptedSharedPreferences 存 Account 列表（JSON），含 v1.x 单 Key → Account 自动迁移 |
+| `AccountRepository` | 读 facade（v2.2）：聚合账户列表 + 活跃选择 + 缓存读取，`AccountSnapshot.primaryPercent` 下沉 window fallback |
 | `UsageCache` | schemaVersion=2，按 accountId 分键（`usage_cache_<id>`）序列化 UsageSnapshot |
-| `UsageRefreshService` | per-account 实例，节流/退避/停止状态独立 |
-| `UsageViewModel` | 多账户 state（accounts / activeAccountId / activeSnapshot），账户增删切换 |
+| `UsageRefreshService` | per-account 实例，节流/退避/停止状态独立；`isStopCode` 共享 stop-code 真源 |
+| `UsageViewModel` | 多账户 state（accounts / activeAccountId / activeSnapshot），账户增删切换 + `notifyWidgets()` 联动卡片 |
 
-活跃账户 id 持久化于普通 prefs（`glm_quota_ui`），Widget 据此显示当前账户。
+活跃账户 id 持久化于普通 prefs（`glm_quota_ui`），经 `AccountRepository` 统一读写（v2.2 收敛，原 widget/worker/VM 三处复制的 `"active_account_id"` 契约已消除）。
 
 **迁移**：v1.x 单 Key（加密文件 `api_key`）→ 首个 GLM Account（`migrateV1SingleKeyIfNeeded`），已真机验证通过。
 
@@ -183,9 +190,9 @@ Provider **无状态**，凭据/region/HttpExecutor 由调用方注入（便于 
 |---|---|---|
 | 手动 | 距上次发起 ≥ 10s | 立即 |
 | 前台（ProcessLifecycle ON_RESUME） | 距上次成功 ≥ 15min | 静默刷新 |
-| 后台（WorkManager） | 每 30min | 遍历所有账户刷新 |
+| 后台（WorkManager） | 每 30min | 默认仅刷 active；`SettingsStore.backgroundRefreshAll` 开关可刷全部；skip stop-code 账户 |
 
-WorkManager 最小 15min；30min 兼顾上游风控。后台遍历所有账户（账户多时注意耗电/风控，未来可优化为仅 active）。
+WorkManager 最小 15min；30min 兼顾上游风控。v2.1 默认仅刷 active（省电+降风控）；v2.2 后台再跳过 stop-code（AUTH/NO_PLAN/UPSTREAM_CHANGED）账户——VM 已停止的账户不被 Worker 无意义重试。
 
 ### 7.2 错误策略
 | 情况 | 缓存 | 后续 |
@@ -220,11 +227,11 @@ UI 只依赖 `UsageSnapshot` / `Account`，不接触 HTTP/解析。开屏页用 
 
 | 组件 | 职责 |
 |---|---|
-| `QuotaWidgetProvider` | AppWidgetProvider，onUpdate 渲染占位 + 触发刷新 |
-| `WidgetRenderer` | 读活跃账户缓存 → RemoteViews 渲染（5h/周两行 + 进度条） |
-| `QuotaRefreshWorker` | WorkManager 30min，遍历所有账户刷新缓存 → 刷 widget |
+| `QuotaWidgetProvider` + `WidgetRenderer` | 单账户详情卡片：onUpdate 渲染占位 + 读活跃账户缓存渲染（5h/周 + 进度条） |
+| `QuotaListWidgetProvider` + `QuotaListRemoteViewsService` | 多账户列表卡片（v2.1 阶段 D，ListView 系统管滚动，品牌色条区分服务商） |
+| `QuotaRefreshWorker` | WorkManager 30min，默认仅刷 active + skip stop-code → 刷两类 widget |
 
-Widget 显示**当前活跃账户**（单账户精简版）。多账户同屏（阶段 D 竖向列表 widget）见 [ROADMAP.md](ROADMAP.md)。
+`UsageViewModel` 数据/账户变更（refresh / switch / add / remove / rename / clear）后调 `notifyWidgets()` → 两个 widget 立即重读缓存渲染（v2.2 修复，不再等 30min Worker）。
 
 ---
 
@@ -236,24 +243,25 @@ android/app/src/main/java/com/example/myapplication/
 ├─ domain/
 │  └─ Models.kt                 # UsageSnapshot/Account/Credential/Window
 ├─ services/
-│  ├─ ServiceProvider.kt        # 接口 + Providers 注册表
-│  ├─ GlmUsageProvider.kt       # ADR-0001
-│  ├─ KimiUsageProvider.kt      # ADR-0003
-│  ├─ MiniMaxUsageProvider.kt
+│  ├─ ServiceProviders.kt       # ServiceProviderConfig 数据表 + ServiceProviders 注册表（v2.2）
 │  ├─ UsageParser.kt            # parseGlm/parseKimi/parseMiniMax
 │  ├─ UsageProvider.kt          # HttpExecutor/HttpResponse/Region/Exception
 │  ├─ OkHttpExecutor.kt         # OkHttp 实现
 │  ├─ ErrorMapper.kt            # 错误映射
 │  ├─ AccountStore.kt           # 加密多账户存储 + 迁移
+│  ├─ AccountRepository.kt      # 读 facade（active 选择 + 缓存读取，v2.2）
 │  ├─ UsageCache.kt             # schemaV2 缓存（CacheStorage 接口）
 │  ├─ PrefsCacheStorage.kt      # SharedPreferences 多键实现
-│  └─ UsageRefreshService.kt    # per-account 编排
+│  ├─ SettingsStore.kt          # 非敏感设置（后台刷新范围等）
+│  └─ UsageRefreshService.kt    # per-account 编排 + isStopCode
 ├─ ui/
-│  ├─ UsageViewModel.kt         # 多账户 ViewModel
+│  ├─ UsageViewModel.kt         # 多账户 ViewModel + notifyWidgets
 │  └─ theme/                    # Compose 主题（科技青蓝）
 └─ widget/
-   ├─ QuotaWidgetProvider.kt    # AppWidgetProvider + WidgetRenderer
-   └─ QuotaRefreshWorker.kt     # WorkManager 后台刷新
+   ├─ QuotaWidgetProvider.kt         # 单账户详情 widget + WidgetRenderer
+   ├─ QuotaListWidgetProvider.kt     # 多账户列表 widget（v2.1）
+   ├─ QuotaListRemoteViewsService.kt # 列表 widget 的 RemoteViewsService + Factory
+   └─ QuotaRefreshWorker.kt          # WorkManager 后台刷新
 ```
 
 ---
@@ -263,8 +271,8 @@ android/app/src/main/java/com/example/myapplication/
 ### 11.1 添加账户
 ```
 AddAccountScreen → 选 provider/region/key
-  → ViewModel.addAccount → provider.fetchUsage（测试连接）
-  → 成功：AccountStore.saveAccount + 切为 active + hydrateAndRefresh
+  → ViewModel.addAccount → ServiceProviders.byId(id).fetchUsage（测试连接）
+  → 成功：AccountStore.saveAccount + 切为 active + hydrateAndRefresh + notifyWidgets
   → 失败：映射错误，保留编辑
 ```
 
@@ -278,10 +286,12 @@ AddAccountScreen → 选 provider/region/key
 
 ## 12. 可测试性
 
-### 已有（20 个单测全过）
+### 已有（约 30 个单测全过）
 - `UsageParserTest`（10 个）—— GLM/Kimi/MiniMax 解析，cc-switch 样例响应
-- `GlmUsageProviderTest` / `KimiUsageProviderTest` / `MiniMaxUsageProviderTest`（10 个）—— mock HttpExecutor 验全链路：URL 拼装、认证头（Raw/Bearer）、错误映射（AUTH/NETWORK/NO_PLAN）、CN/INTL 切换
-- host JVM 单测需 `testImplementation("org.json:json")` 替代 android.jar 的 org.json stub（生产用 android org.json，测试用 org.json:json —— 两者同源、host JVM 单测标准做法）
+- `GlmUsageProviderTest` / `KimiUsageProviderTest` / `MiniMaxUsageProviderTest`（~12 个）—— 经 `ServiceProviders` config + mock HttpExecutor 验全链路：URL、认证头（Raw/Bearer）、错误映射（AUTH/NETWORK/NO_PLAN）、CN/INTL
+- `AccountRepositoryTest`（4 个，v2.2）—— `AccountSnapshot.primaryPercent` window fallback 4 分支
+- `UsageRefreshServiceTest`（5 个，v2.2）—— `isStopCode` 分类 + AUTH 停止 vs NETWORK 仅退避（停止策略根源）
+- host JVM 单测需 `testImplementation("org.json:json")` 替代 android.jar 的 org.json stub（两者同源、host JVM 单测标准做法）
 
 ### 待补（需 Robolectric / instrumented test）
 - AccountStore 迁移测试（依赖 Android EncryptedSharedPreferences，v1.x→Account 迁移已**真机验证**通过 glm-xxx）
@@ -291,7 +301,7 @@ AddAccountScreen → 选 provider/region/key
 
 ## 13. 演进路线
 
-见 [ROADMAP.md](ROADMAP.md)：阶段 D（多账户列表 widget）、火山方舟/ZenMux（v2.1+）、余额制 provider 抽象等。
+见 [ROADMAP.md](ROADMAP.md)：阶段 D（多账户列表 widget，✅ v2.1 已完成）、火山方舟/ZenMux（v2.3+）、余额制 provider 抽象、通知/告警等。
 
 ---
 

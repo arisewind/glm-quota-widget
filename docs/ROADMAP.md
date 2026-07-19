@@ -1,6 +1,6 @@
-# GLM Quota Widget · 功能路线图（v1.1 → v2.0）
+# GLM Quota Widget · 功能路线图（v1.1 → v2.2）
 
-- 文档版本：v1.1
+- 文档版本：v2.2
 - 制定日期：2026-07-18
 - 状态：**v1.1 已完成**；**v2.0 阶段 A/B/C 已完成**（多服务商架构 + Kimi + MiniMax，2026-07-18）；**v2.1 阶段 D 已完成**（多账户列表 widget 卡片式 + 服务商品牌色 + 账户重命名，2026-07-19，commit 2788da5）；**v2.2 架构深化已完成**（Provider config 化 + AccountRepository + Worker skip，2026-07-19，编译 + 单测全过）；GLM 真机回归 + Kimi/MiniMax 真机验证 + 火山/ZenMux 待做
 - 关联：[PRODUCT.md](PRODUCT.md) / [ARCHITECTURE.md](ARCHITECTURE.md) / [REVIEW.md](REVIEW.md)
