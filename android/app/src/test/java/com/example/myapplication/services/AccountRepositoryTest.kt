@@ -56,6 +56,18 @@ class AccountRepositoryTest {
     }
 
     @Test
+    fun primaryPercent_无5h窗_工具调用额度不参与max() {
+        val item = AccountRepository.AccountSnapshot(
+            account,
+            snapshot(listOf(
+                NormalizedWindow(WindowKind.WEEKLY, 19),
+                NormalizedWindow(WindowKind.TOOLS, 90)   // 工具调用 90% 不应混入 token 额度主数字
+            ))
+        )
+        assertEquals(19, item.primaryPercent)
+    }
+
+    @Test
     fun primaryPercent_无快照_返回0() {
         assertEquals(0, AccountRepository.AccountSnapshot(account, null).primaryPercent)
     }

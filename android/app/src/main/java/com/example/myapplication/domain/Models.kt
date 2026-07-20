@@ -7,7 +7,9 @@ enum class UsageErrorCode { NETWORK, AUTH, NO_PLAN, RATE_LIMITED, UPSTREAM_CHANG
 enum class UsageSource { DIRECT, BRIDGE, MOCK }
 
 /** 归一化窗口语义（ADR-0002）。必须按本字段定位窗口，不能按 resetAt 排序（cc-switch #3036：周期末周窗可能比 5h 更早重置）。 */
-enum class WindowKind { FIVE_HOUR, WEEKLY, MONTHLY }
+enum class WindowKind(val displayName: String) {
+    FIVE_HOUR("5 小时额度"), WEEKLY("本周额度"), MONTHLY("本月额度"), TOOLS("工具调用额度")
+}
 
 /** 归一化后的单个额度窗口（各家 Provider 输出此结构）。 */
 data class NormalizedWindow(

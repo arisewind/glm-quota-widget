@@ -15,3 +15,11 @@ dist/
 .DS_Store
 Thumbs.db
 ~$*
+
+# 参考素材 / 原型 / 编辑器配置（非项目代码，本地用；前导 / 仅匹配仓库根，避免误伤 com/example/ 包路径）
+/prototype/
+/NordVPN/
+/Tab Bar/
+/Top Navigation Bar/
+/example/
+/.vscode/

@@ -43,13 +43,14 @@ object UsageParser {
             ?: throw UpstreamChangedException("missing 5h window (TOKENS_LIMIT unit:3)")
         val weeklyLimit = find("TOKENS_LIMIT", 6)
             ?: throw UpstreamChangedException("missing weekly window (TOKENS_LIMIT unit:6)")
-        val modelLimit = find("TIME_LIMIT", 5)
+        val toolsLimit = find("TIME_LIMIT", 5)   // 工具调用额度：usage=总配额/currentValue=已用/percentage=已用%/usageDetails=按工具细分
 
-        val windows = listOf(
-            toGlmWindow(sessionLimit, WindowKind.FIVE_HOUR),
-            toGlmWindow(weeklyLimit, WindowKind.WEEKLY)
-        )
-        val modelUsage: List<ModelUsageItem>? = modelLimit?.optJSONArray("usageDetails")?.let { arr ->
+        val windows = buildList {
+            add(toGlmWindow(sessionLimit, WindowKind.FIVE_HOUR))
+            add(toGlmWindow(weeklyLimit, WindowKind.WEEKLY))
+            toolsLimit?.let { add(toGlmToolsWindow(it)) }
+        }
+        val modelUsage: List<ModelUsageItem>? = toolsLimit?.optJSONArray("usageDetails")?.let { arr ->
             (0 until arr.length()).mapNotNull { i ->
                 arr.optJSONObject(i)?.let { d ->
                     ModelUsageItem(d.optString("modelCode", "unknown"), d.optInt("usage", 0))
@@ -74,6 +75,21 @@ object UsageParser {
         val reset = if (limit.has("nextResetTime") && !limit.isNull("nextResetTime"))
             limit.optLong("nextResetTime") else null
         return NormalizedWindow(kind, used, reset)
+    }
+
+    /** 工具调用额度窗（TIME_LIMIT unit:5）。usage=总配额次数、currentValue=已用次数、percentage=已用%；按工具的 usageDetails 由 modelUsage 另存。 */
+    private fun toGlmToolsWindow(limit: JSONObject): NormalizedWindow {
+        val used = limit.optInt("percentage", 0).coerceIn(0, 100)
+        val reset = if (limit.has("nextResetTime") && !limit.isNull("nextResetTime"))
+            limit.optLong("nextResetTime") else null
+        return NormalizedWindow(
+            kind = WindowKind.TOOLS,
+            usedPercent = used,
+            resetAt = reset,
+            usedValue = limit.optDouble("currentValue", 0.0).takeIf { it > 0 },
+            totalValue = limit.optDouble("usage", 0.0).takeIf { it > 0 },
+            unit = "次"
+        )
     }
 
     /**

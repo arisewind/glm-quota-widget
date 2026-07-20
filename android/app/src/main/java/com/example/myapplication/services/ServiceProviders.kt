@@ -84,6 +84,9 @@ object ServiceProviders {
     /** 容错查找（渲染路径用，数据损坏时返回 null 而非崩）。 */
     fun findById(id: String): ServiceProviderConfig? = all().firstOrNull { it.providerId == id }
 
+    /** 取服务商显示名；未知 id 回退裸 id（渲染路径用，收敛 UI/widget/通知记录三处重复）。 */
+    fun labelOf(id: String): String = findById(id)?.label ?: id
+
     private fun glm() = ServiceProviderConfig(
         providerId = ServiceProviderInfo.GLM_ID,
         label = ServiceProviderInfo.GLM_LABEL,

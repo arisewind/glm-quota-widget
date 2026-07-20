@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.example.myapplication
 
 import android.Manifest
@@ -44,6 +46,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.TopAppBar
+import com.example.myapplication.ui.PushedScreen
+import com.example.myapplication.ui.Tab
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.IconButton
+import com.example.myapplication.domain.UsageThresholds
+import com.example.myapplication.domain.UsageTier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,6 +82,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -111,27 +132,17 @@ class MainActivity : ComponentActivity() {
         })
         handleAccountIntent(intent, vm)
         setContent {
-            MyApplicationTheme {
+            val themeMode by vm.themeMode.collectAsState()
+            MyApplicationTheme(themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    var screen by rememberSaveable { mutableStateOf("main") }
-                    when (screen) {
-                        "accounts" -> AccountsScreen(
-                            vm,
-                            onBack = { screen = "main" },
-                            onAdd = { screen = "add" }
-                        )
-                        "add" -> AddAccountScreen(vm, isFirst = false, onDone = { screen = "accounts" })
-                        else -> {
-                            val state by vm.state.collectAsState()
-                            when (val s = state) {
-                                UsageUiState.Loading -> LoadingView()
-                                UsageUiState.Unconfigured -> AddAccountScreen(vm, isFirst = true, onDone = {})
-                                is UsageUiState.Content -> UsageScreen(s, vm, onOpenAccounts = { screen = "accounts" })
-                            }
-                        }
+                    val state by vm.state.collectAsState()
+                    when (val s = state) {
+                        UsageUiState.Loading -> LoadingView()
+                        UsageUiState.Unconfigured -> AddAccountScreen(vm, isFirst = true, onDone = {})
+                        is UsageUiState.Content -> AppScaffold(s, vm)
                     }
                 }
             }
@@ -149,6 +160,62 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * 主导航骨架（v3.4）：底栏 3-tab + pushed 子页。
+ * - Loading/Unconfigured 由顶层渲染（无底栏）；Content 进本骨架。
+ * - pushed（添加账户/通知记录）覆盖 tab，系统返回回 tab 而非退出 app。
+ */
+@Composable
+private fun AppScaffold(content: UsageUiState.Content, vm: UsageViewModel) {
+    var tab by rememberSaveable { mutableStateOf(Tab.RANGE) }
+    var pushed by rememberSaveable { mutableStateOf<PushedScreen?>(null) }
+    BackHandler(enabled = pushed != null) { pushed = null }
+
+    val p = pushed
+    if (p != null) {
+        when (p) {
+            PushedScreen.ADD_ACCOUNT -> AddAccountScreen(vm, isFirst = false, onDone = { pushed = null })
+            PushedScreen.NOTIFICATIONS -> NotificationLogScreen(vm, onBack = { pushed = null })
+        }
+    } else {
+        Scaffold(bottomBar = { AppBottomBar(selected = tab, onChange = { tab = it }) }) { padding ->
+            Box(Modifier.padding(padding)) {
+                when (tab) {
+                    Tab.RANGE -> UsageScreen(
+                        content, vm,
+                        onOpenAccounts = { tab = Tab.ACCOUNTS },
+                        onOpenNotifications = { pushed = PushedScreen.NOTIFICATIONS }
+                    )
+                    Tab.ACCOUNTS -> AccountsScreen(
+                        vm, onAdd = { pushed = PushedScreen.ADD_ACCOUNT }
+                    )
+                    Tab.SETTINGS -> SettingsScreen(vm)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppBottomBar(selected: Tab, onChange: (Tab) -> Unit) {
+    NavigationBar {
+        Tab.entries.forEach { t ->
+            NavigationBarItem(
+                selected = selected == t,
+                onClick = { onChange(t) },
+                icon = { Icon(imageVector = t.navIcon(), contentDescription = null) },
+                label = { Text(t.label) }
+            )
+        }
+    }
+}
+
+private fun Tab.navIcon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
+    Tab.RANGE -> Icons.Filled.Home
+    Tab.ACCOUNTS -> Icons.Filled.AccountCircle
+    Tab.SETTINGS -> Icons.Filled.Settings
+}
+
 @Composable
 private fun LoadingView() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -156,17 +223,13 @@ private fun LoadingView() {
     }
 }
 
-private fun usageColorFor(usedPercent: Int): Color = when {
-    usedPercent > 85 -> UsageDanger
-    usedPercent >= 60 -> UsageWarn
-    else -> UsageSafe
+private fun usageColorFor(usedPercent: Int): Color = when (UsageThresholds.tierOf(usedPercent)) {
+    UsageTier.DANGER -> UsageDanger
+    UsageTier.WARN -> UsageWarn
+    UsageTier.SAFE -> UsageSafe
 }
 
-private fun windowTitle(kind: WindowKind) = when (kind) {
-    WindowKind.FIVE_HOUR -> "5 小时额度"
-    WindowKind.WEEKLY -> "本周额度"
-    WindowKind.MONTHLY -> "本月额度"
-}
+private fun windowTitle(kind: WindowKind) = kind.displayName
 
 /** 7 天用量趋势（v3.1，Compose Canvas 自绘：时间驱动 X 轴固定 7 天日期 + 参考线 + 85% 告警线 + 渐变面积 + 末点标注；重置日置卡片右下角）。 */
 @Composable
@@ -175,7 +238,7 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("7天用量趋势", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -212,12 +275,12 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
                 listOf(0, 100).forEach { p ->
                     val y = py(p)
                     drawLine(Color(0xFF334155), Offset(padL, y), Offset(w, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
-                    native.drawText("$p", 0f, y + 3.dp.toPx(), gridPaint)
+                    native.drawText("$p%", 0f, y + 3.dp.toPx(), gridPaint)
                 }
-                // 85% 告警线，标签入 Y 轴左侧栏
-                val wy = py(85)
+                // DANGER(85%) 告警线，标签入 Y 轴左侧栏
+                val wy = py(UsageThresholds.DANGER)
                 drawLine(Color(0xFFFF6B6B), Offset(padL, wy), Offset(w, wy), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 5f)))
-                native.drawText("85", 0f, wy + 3.dp.toPx(), warnPaint)
+                native.drawText("${UsageThresholds.DANGER}%", 0f, wy + 3.dp.toPx(), warnPaint)
                 // 面积 + 折线（点按索引等距）
                 val line = Path().apply {
                     moveTo(px(0), py(points[0].percent))
@@ -254,18 +317,59 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
     }
 }
 
-private fun providerLabelOf(providerId: String) =
-    ServiceProviders.findById(providerId)?.label ?: providerId
+private fun providerLabelOf(providerId: String) = ServiceProviders.labelOf(providerId)
 
 @Composable
 private fun UsageScreen(
     content: UsageUiState.Content,
     vm: UsageViewModel,
-    onOpenAccounts: () -> Unit
+    onOpenAccounts: () -> Unit,
+    onOpenNotifications: () -> Unit
 ) {
     val snap = content.snapshot
     val activeAccount = content.accounts.firstOrNull { it.accountId == content.activeAccountId }
-    Scaffold { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column(Modifier.clickable { onOpenAccounts() }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                activeAccount?.label ?: snap.providerLabel,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "切换账户",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        val sub = listOfNotNull(
+                            snap.providerLabel.takeIf { it.isNotEmpty() && it != (activeAccount?.label ?: snap.providerLabel) },
+                            snap.planName?.takeIf { it.isNotEmpty() }
+                        ).joinToString(" · ")
+                        if (sub.isNotEmpty()) {
+                            Text(
+                                sub,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { vm.refresh() }) { Icon(Icons.Filled.Refresh, contentDescription = "刷新") }
+                    IconButton(onClick = onOpenNotifications) { Icon(Icons.Filled.Notifications, contentDescription = "通知记录") }
+                }
+            )
+        }
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -275,44 +379,6 @@ private fun UsageScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        activeAccount?.label ?: snap.providerLabel,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    val sub = listOfNotNull(
-                        snap.providerLabel.takeIf { it.isNotEmpty() && it != (activeAccount?.label ?: snap.providerLabel) },
-                        snap.planName?.takeIf { it.isNotEmpty() }
-                    ).joinToString(" · ")
-                    if (sub.isNotEmpty()) {
-                        Text(
-                            sub,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                TextButton(onOpenAccounts) { Text("账户", fontWeight = FontWeight.SemiBold) }
-                TextButton(onClick = { vm.refresh() }) { Text("刷新", fontWeight = FontWeight.SemiBold) }
-            }
-
-            if (content.accounts.size > 1) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    content.accounts.forEach { acc ->
-                        FilterChip(
-                            selected = acc.accountId == content.activeAccountId,
-                            onClick = { vm.switchAccount(acc.accountId) },
-                            label = { Text(acc.label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        )
-                    }
-                }
-            }
 
             if (snap.status == UsageStatus.STALE || snap.status == UsageStatus.ERROR) {
                 StatusBanner(snap.errorMessage ?: "数据异常", snap.status == UsageStatus.STALE)
@@ -327,11 +393,11 @@ private fun UsageScreen(
                 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            "模型用量",
+                            "工具调用明细",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -360,11 +426,9 @@ private fun UsageScreen(
 }
 
 @Composable
-private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> Unit) {
+private fun AccountsScreen(vm: UsageViewModel, onAdd: () -> Unit) {
     val accounts by vm.accounts.collectAsState()
     val activeId by vm.activeAccountId.collectAsState()
-    val refreshAll by vm.backgroundRefreshAll.collectAsState()
-    val alertEnabled by vm.alertEnabled.collectAsState()
     var renaming by remember { mutableStateOf<Account?>(null) }
 
     Scaffold { padding ->
@@ -378,62 +442,14 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
         ) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onBack) { Text("返回") }
-                Spacer(Modifier.size(4.dp))
                 Text("账户管理", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-
-            // 后台刷新设置
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("后台刷新全部账户", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "关闭=只刷当前账户（省电、降低风控）",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = refreshAll, onCheckedChange = { vm.setBackgroundRefreshAll(it) })
-                }
-            }
-
-            // 额度告警设置
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("额度告警", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "用量 ≥85% 提醒、100% 紧急通知",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = alertEnabled, onCheckedChange = { vm.setAlertEnabled(it) })
-                }
             }
 
             accounts.forEach { acc ->
                 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -486,13 +502,6 @@ private fun AccountsScreen(vm: UsageViewModel, onBack: () -> Unit, onAdd: () -> 
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) { Text("添加账户", fontWeight = FontWeight.SemiBold) }
-
-            OutlinedButton(
-                onClick = { vm.clearConfig() },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) { Text("清除全部账户", fontWeight = FontWeight.SemiBold) }
 
             Spacer(Modifier.height(16.dp))
         }
@@ -671,7 +680,7 @@ private fun WindowCard(title: String, window: NormalizedWindow) {
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -704,6 +713,13 @@ private fun WindowCard(title: String, window: NormalizedWindow) {
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp))
             )
+            window.usedValue?.let { used -> window.totalValue?.let { total ->
+                Text(
+                    "${used.toInt()} / ${total.toInt()}${window.unit?.let { " $it" } ?: ""} 已用",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }}
             Text(
                 if (window.resetAt != null) "预计 ${formatTime(window.resetAt)} 恢复" else "重置时间暂不可用",
                 style = MaterialTheme.typography.bodySmall,

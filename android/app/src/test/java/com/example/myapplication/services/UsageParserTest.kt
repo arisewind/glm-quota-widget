@@ -19,22 +19,30 @@ class UsageParserTest {
         val body = """{"success":true,"code":200,"data":{"level":"pro","limits":[
             {"type":"TOKENS_LIMIT","unit":3,"percentage":5,"nextResetTime":1720000000000},
             {"type":"TOKENS_LIMIT","unit":6,"percentage":19},
-            {"type":"TIME_LIMIT","unit":5,"usageDetails":[{"modelCode":"glm-4.6","usage":12345}]}
+            {"type":"TIME_LIMIT","unit":5,"percentage":12,"currentValue":51,"usage":1000,
+             "nextResetTime":1720500000000,
+             "usageDetails":[{"modelCode":"search-prime","usage":47},{"modelCode":"web-reader","usage":4}]}
         ]}}"""
         val snap = UsageParser.parseGlm(body, 1000L)
         assertEquals("glm", snap.providerId)
         assertEquals("智谱 GLM Coding Plan", snap.providerLabel)
         assertEquals("pro", snap.planName)
-        assertEquals(2, snap.windows.size)
+        assertEquals(3, snap.windows.size)
         val five = snap.window(WindowKind.FIVE_HOUR)!!
         assertEquals(5, five.usedPercent)
         assertEquals(1720000000000L, five.resetAt)
         val weekly = snap.window(WindowKind.WEEKLY)!!
         assertEquals(19, weekly.usedPercent)
         assertNull(weekly.resetAt)
-        assertEquals(1, snap.modelUsage?.size)
-        assertEquals("glm-4.6", snap.modelUsage!![0].modelCode)
-        assertEquals(12345, snap.modelUsage!![0].usage)
+        val tools = snap.window(WindowKind.TOOLS)!!
+        assertEquals(12, tools.usedPercent)
+        assertEquals(51.0, tools.usedValue!!, 0.001)
+        assertEquals(1000.0, tools.totalValue!!, 0.001)
+        assertEquals("次", tools.unit)
+        assertEquals(1720500000000L, tools.resetAt)
+        assertEquals(2, snap.modelUsage?.size)
+        assertEquals("search-prime", snap.modelUsage!![0].modelCode)
+        assertEquals(47, snap.modelUsage!![0].usage)
     }
 
     @Test

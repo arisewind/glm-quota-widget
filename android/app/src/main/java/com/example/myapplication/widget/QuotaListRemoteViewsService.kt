@@ -63,8 +63,7 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
         }
     }
 
-    private fun providerLabelOf(providerId: String) =
-        ServiceProviders.findById(providerId)?.label ?: providerId
+    private fun providerLabelOf(providerId: String) = ServiceProviders.labelOf(providerId)
 
     override fun getViewAt(position: Int): RemoteViews {
         if (position >= rows.size) return RemoteViews(context.packageName, R.layout.widget_quota_list_item)
@@ -94,13 +93,6 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
     override fun getViewTypeCount() = 1
     override fun getCount() = rows.size
     override fun onDestroy() {}
-
-    /** 用量色：<60% 安全青、60–85% 琥珀、>85% 珊瑚红。 */
-    private fun usageColorInt(usedPercent: Int): Int = when {
-        usedPercent > 85 -> 0xFFFF6B6B.toInt()
-        usedPercent >= 60 -> 0xFFFFB84D.toInt()
-        else -> 0xFF00C2B8.toInt()
-    }
 
     companion object {
         const val EXTRA_ACCOUNT_ID = "account_id"

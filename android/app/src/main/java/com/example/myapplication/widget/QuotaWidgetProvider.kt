@@ -102,6 +102,9 @@ object WidgetRenderer {
                     R.id.widget_weekly_value,
                     weekly?.let { "${100 - it.usedPercent}% 剩余" } ?: "—"
                 )
+                // 数字按各自窗口用量变色（与列表版 widget 共用 usageColorInt，阈值一致）
+                session?.let { views.setTextColor(R.id.widget_session_value, usageColorInt(it.usedPercent)) }
+                weekly?.let { views.setTextColor(R.id.widget_weekly_value, usageColorInt(it.usedPercent)) }
                 views.setProgressBar(R.id.widget_session_bar, 100, session?.usedPercent ?: 0, false)
                 views.setProgressBar(R.id.widget_weekly_bar, 100, weekly?.usedPercent ?: 0, false)
                 views.setTextViewText(R.id.widget_updated, "更新于 ${formatTime(snapshot.updatedAt)}")

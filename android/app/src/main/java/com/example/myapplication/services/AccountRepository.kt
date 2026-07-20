@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.WindowKind
+import com.example.myapplication.domain.primaryPercent
 
 /**
  * 账户读 facade（ADR-0002 多账户）。聚合「账户列表 + 活跃选择 + 缓存读取」三件事，
@@ -57,11 +58,9 @@ class AccountRepository(context: Context) {
         val account: Account,
         val snapshot: UsageSnapshot?
     ) {
-        /** 列表/详情主用量百分比：5h 窗优先，否则取所有窗最大值，无快照 0。 */
+        /** 列表/详情主用量百分比（5h 优先 → 周 → 非工具窗最大值；逻辑见 [com.example.myapplication.domain.primaryPercent]，排除工具调用额度）。 */
         val primaryPercent: Int
-            get() = snapshot?.window(WindowKind.FIVE_HOUR)?.usedPercent
-                ?: snapshot?.windows?.maxOfOrNull { it.usedPercent }
-                ?: 0
+            get() = snapshot?.primaryPercent() ?: 0
     }
 
     companion object {

@@ -34,6 +34,11 @@ class AlertStateStore(context: Context) {
         edit.apply()
     }
 
+    /** 清全部 armed 状态（关告警时调，防重开后幽灵恢复通知）。 */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
+
     private fun key(accountId: String, kind: WindowKind) = "$accountId:${kind.name}"
 
     companion object {

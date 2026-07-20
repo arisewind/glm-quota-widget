@@ -7,6 +7,8 @@ import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.Credential
 import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.WindowKind
+import com.example.myapplication.domain.primaryPercent
+import com.example.myapplication.domain.primaryWindow
 import com.example.myapplication.services.AccountRepository
 import com.example.myapplication.services.AccountStore
 import com.example.myapplication.services.CacheStorage
@@ -15,6 +17,8 @@ import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageAlerter
+import com.example.myapplication.services.NotificationLogEntry
+import com.example.myapplication.services.NotificationLogStore
 import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
@@ -34,7 +38,9 @@ sealed interface UsageUiState {
     data class Content(
         val accounts: List<Account>,
         val activeAccountId: String,
-        val snapshot: UsageSnapshot
+        val snapshot: UsageSnapshot,
+        val primaryPercent: Int,
+        val primaryWindowKind: WindowKind?
     ) : UsageUiState
 }
 
@@ -53,14 +59,27 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = SettingsStore(app)
     private val alerter = UsageAlerter(app)
     private val historyStore = UsageHistoryStore(app)
+    private val notificationLogStore = NotificationLogStore(app)
 
     /** 后台刷新是否遍历全部账户（默认 false = 仅 active，省电 + 降低风控）。 */
     private val _backgroundRefreshAll = MutableStateFlow(settings.backgroundRefreshAll())
     val backgroundRefreshAll: StateFlow<Boolean> = _backgroundRefreshAll
 
-    /** 额度告警开关（默认开）：关则刷新后不发通知。 */
-    private val _alertEnabled = MutableStateFlow(settings.alertEnabled())
-    val alertEnabled: StateFlow<Boolean> = _alertEnabled
+    /** 低额度告警（≥85%）开关：默认开。 */
+    private val _alertLowEnabled = MutableStateFlow(settings.alertLowEnabled())
+    val alertLowEnabled: StateFlow<Boolean> = _alertLowEnabled
+
+    /** 额度耗尽（100%）告警开关：默认开。 */
+    private val _alertExhaustedEnabled = MutableStateFlow(settings.alertExhaustedEnabled())
+    val alertExhaustedEnabled: StateFlow<Boolean> = _alertExhaustedEnabled
+
+    /** 主题模式（浅色/深色/跟随系统）。 */
+    private val _themeMode = MutableStateFlow(settings.themeMode())
+    val themeMode: StateFlow<String> = _themeMode
+
+    /** 通知记录（v3.2，通知记录页用）。 */
+    private val _notificationLog = MutableStateFlow<List<NotificationLogEntry>>(emptyList())
+    val notificationLog: StateFlow<List<NotificationLogEntry>> = _notificationLog
 
     /** 当前活跃账户的周窗用量历史（v3.1 趋势折线用）。 */
     private val _weeklyHistory = MutableStateFlow<List<UsageHistoryStore.Point>>(emptyList())
@@ -79,7 +98,11 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         when {
             accounts.isEmpty() -> UsageUiState.Unconfigured
             activeId == null || snap == null -> UsageUiState.Loading
-            else -> UsageUiState.Content(accounts, activeId, snap)
+            else -> UsageUiState.Content(
+                accounts, activeId, snap,
+                snap.primaryPercent(),
+                snap.primaryWindow()?.kind
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UsageUiState.Loading)
 
@@ -218,9 +241,36 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         _backgroundRefreshAll.value = all
     }
 
-    fun setAlertEnabled(enabled: Boolean) {
-        settings.setAlertEnabled(enabled)
-        _alertEnabled.value = enabled
+    fun setAlertLowEnabled(enabled: Boolean) {
+        settings.setAlertLowEnabled(enabled)
+        _alertLowEnabled.value = enabled
+        if (!enabled && !settings.alertExhaustedEnabled()) {
+            // 两档都关 → 清全部 armed + cancel 已显示告警通知
+            alerter.onAllArmedClear(_accounts.value.map { it.accountId })
+        }
+    }
+
+    fun setAlertExhaustedEnabled(enabled: Boolean) {
+        settings.setAlertExhaustedEnabled(enabled)
+        _alertExhaustedEnabled.value = enabled
+        if (!enabled && !settings.alertLowEnabled()) {
+            alerter.onAllArmedClear(_accounts.value.map { it.accountId })
+        }
+    }
+
+    fun setThemeMode(mode: String) {
+        settings.setThemeMode(mode)
+        _themeMode.value = mode
+    }
+
+    /** 进入通知记录页时读最新（alerter append 已落盘）。 */
+    fun refreshNotificationLog() {
+        _notificationLog.value = notificationLogStore.readAll()
+    }
+
+    fun clearNotificationLog() {
+        notificationLogStore.clearAll()
+        _notificationLog.value = emptyList()
     }
 
     fun removeAccount(accountId: String) {
@@ -249,8 +299,12 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             _accounts.value.forEach {
                 cache.clear(it.accountId)
                 accountStore.removeAccount(it.accountId)
+                alerter.onAccountRemoved(it.accountId)  // 清 armed + cancel 通知防孤儿（与 removeAccount 一致）
+                historyStore.clearAccount(it.accountId) // 清周窗历史（与 removeAccount 一致）
             }
             refreshServices.clear()
+            notificationLogStore.clearAll()
+            _notificationLog.value = emptyList()
             _accounts.value = emptyList()
             _activeAccountId.value = null
             repository.setActive(null)
