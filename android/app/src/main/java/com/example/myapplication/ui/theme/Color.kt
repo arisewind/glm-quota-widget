@@ -28,11 +28,3 @@ val DividerLight = Color(0xFFEEF0F3)
 val UsageSafe = Color(0xFF00B894)   // < 60% 正常（绿，原青改绿避免与品牌蓝近）
 val UsageWarn = Color(0xFFF5A623)   // 60–85%（橙）
 val UsageDanger = Color(0xFFFF6B6B) // > 85%（红）
-
-// 兼容旧引用（Theme 模板默认色，保留避免破坏）
-val Purple80 = BrandAccent
-val PurpleGrey80 = OnSurfaceMuted
-val Pink80 = UsageWarn
-val Purple40 = BrandPrimaryDark
-val PurpleGrey40 = OnSurfaceMutedLight
-val Pink40 = UsageWarn

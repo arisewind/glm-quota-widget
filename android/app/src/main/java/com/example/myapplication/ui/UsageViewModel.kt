@@ -77,6 +77,15 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val _themeMode = MutableStateFlow(settings.themeMode())
     val themeMode: StateFlow<String> = _themeMode
 
+    /** v3.5：续航页主卡窗口偏好（null=默认 5h 优先回退）。 */
+    private val _primaryWindowKind = MutableStateFlow(settings.primaryWindowKind())
+    val primaryWindowKind: StateFlow<WindowKind?> = _primaryWindowKind
+
+    /** v3.5：通知已读时间戳 + 铃铛未读 badge。 */
+    private val _lastSeenNotificationAt = MutableStateFlow(settings.lastSeenNotificationAt())
+    private val _hasUnreadNotifications = MutableStateFlow(false)
+    val hasUnreadNotifications: StateFlow<Boolean> = _hasUnreadNotifications
+
     /** 通知记录（v3.2，通知记录页用）。 */
     private val _notificationLog = MutableStateFlow<List<NotificationLogEntry>>(emptyList())
     val notificationLog: StateFlow<List<NotificationLogEntry>> = _notificationLog
@@ -94,15 +103,15 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val _activeSnapshot = MutableStateFlow<UsageSnapshot?>(null)
     val activeSnapshot: StateFlow<UsageSnapshot?> = _activeSnapshot
 
-    val state: StateFlow<UsageUiState> = combine(_accounts, _activeAccountId, _activeSnapshot) { accounts, activeId, snap ->
+    val state: StateFlow<UsageUiState> = combine(_accounts, _activeAccountId, _activeSnapshot, _primaryWindowKind) { accounts, activeId, snap, preferredKind ->
         when {
             accounts.isEmpty() -> UsageUiState.Unconfigured
             activeId == null || snap == null -> UsageUiState.Loading
-            else -> UsageUiState.Content(
-                accounts, activeId, snap,
-                snap.primaryPercent(),
-                snap.primaryWindow()?.kind
-            )
+            else -> {
+                // v3.5：偏好优先；偏好窗口在该账户不存在（如 Kimi 无 TOOLS）时回退 primaryWindow()
+                val actualKind = preferredKind?.let { snap.window(it)?.kind } ?: snap.primaryWindow()?.kind
+                UsageUiState.Content(accounts, activeId, snap, snap.primaryPercent(), actualKind)
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UsageUiState.Loading)
 
@@ -113,6 +122,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val refreshServices = mutableMapOf<String, UsageRefreshService>()
 
     init {
+        recomputeUnread()  // v3.5：启动即算一次铃铛 badge
         viewModelScope.launch {
             val list = accountStore.listAccounts()
             _accounts.value = list
@@ -168,6 +178,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
             alerter.check(snap, account)
             appendWeekly(account.accountId, snap)
             notifyWidgets()
+            recomputeUnread()  // v3.5：后台 Worker 可能 append 新通知，回前台即重算 badge
         }
     }
 
@@ -261,11 +272,33 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     fun setThemeMode(mode: String) {
         settings.setThemeMode(mode)
         _themeMode.value = mode
+        notifyWidgets()  // v3.6：主题变更 → widget 深浅重绘
+    }
+
+    /** v3.5：把指定窗口设为主卡（点 mini 升主），持久化偏好。 */
+    fun setPrimaryWindow(kind: WindowKind) {
+        settings.setPrimaryWindowKind(kind)
+        _primaryWindowKind.value = kind
+    }
+
+    /** v3.5：进入通知记录页标记已读，铃铛 badge 清零。 */
+    fun markNotificationsSeen() {
+        val now = System.currentTimeMillis()
+        settings.setLastSeenNotificationAt(now)
+        _lastSeenNotificationAt.value = now
+        recomputeUnread()
+    }
+
+    /** v3.5：重算铃铛未读态。最新通知时间 > 已读时间即未读（readAll 廉价，直接读 store，不依赖懒加载的 _notificationLog）。 */
+    private fun recomputeUnread() {
+        val latest = notificationLogStore.readAll().firstOrNull()?.timestamp ?: 0L
+        _hasUnreadNotifications.value = latest > settings.lastSeenNotificationAt()
     }
 
     /** 进入通知记录页时读最新（alerter append 已落盘）。 */
     fun refreshNotificationLog() {
         _notificationLog.value = notificationLogStore.readAll()
+        recomputeUnread()
     }
 
     fun clearNotificationLog() {

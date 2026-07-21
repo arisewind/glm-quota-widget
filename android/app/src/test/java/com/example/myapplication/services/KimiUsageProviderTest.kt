@@ -24,7 +24,8 @@ class KimiUsageProviderTest {
         }
     }
 
-    private val sample = """{"limits":[{"detail":{"limit":100000,"remaining":95000}}],"usage":{"limit":500000,"remaining":405000}}"""
+    // 真实返回快照（2026-07-21 抓取）：usage=周窗（resetTime 下周一）、limits[0]=5h 窗（window.duration 300 分钟）
+    private val sample = """{"usage":{"limit":"100","used":"24","remaining":"76","resetTime":"2026-07-28T01:55:04.262116Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","used":"67","remaining":"33","resetTime":"2026-07-21T08:55:04.262116Z"}}]}"""
 
     @Test
     fun fetchUsage_success() {
@@ -33,7 +34,8 @@ class KimiUsageProviderTest {
             kimi.fetchUsage(Credential.Bearer("k"), null, http, now = { 1L })
         }
         assertEquals("kimi", snap.providerId)
-        assertEquals(5, snap.window(WindowKind.FIVE_HOUR)!!.usedPercent)
+        assertEquals(67, snap.window(WindowKind.FIVE_HOUR)!!.usedPercent)   // 5h：(100-33)/100
+        assertEquals(24, snap.window(WindowKind.WEEKLY)!!.usedPercent)      // 周：(100-76)/100
         assertEquals("https://api.kimi.com/coding/v1/usages", http.capturedUrl)
         assertEquals("Bearer k", http.capturedHeaders?.get("Authorization")) // Bearer
     }

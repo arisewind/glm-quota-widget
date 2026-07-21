@@ -7,6 +7,7 @@
     android:background="@drawable/widget_background">
 
     <TextView
+        android:id="@+id/list_widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="14dp"

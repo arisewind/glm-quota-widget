@@ -15,6 +15,10 @@ dist/
 .DS_Store
 Thumbs.db
 ~$*
+# 明文 API Key / 凭据测试文件（防 git add -A 误提交；前导 / 锁仓库根，不误伤包路径）
+/*_api_test.txt
+*.key
+*.env
 
 # 参考素材 / 原型 / 编辑器配置（非项目代码，本地用；前导 / 仅匹配仓库根，避免误伤 com/example/ 包路径）
 /prototype/

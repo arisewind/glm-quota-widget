@@ -61,7 +61,11 @@ internal fun NotificationLogScreen(vm: UsageViewModel, onBack: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
         vm.refreshNotificationLog()  // 首次进入读一次
-        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) vm.refreshNotificationLog() }
+        vm.markNotificationsSeen()   // v3.5：进入通知页 = 已读，铃铛 badge 清零
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) {
+            vm.refreshNotificationLog()
+            vm.markNotificationsSeen()
+        } }
         owner.lifecycle.addObserver(obs)
         onDispose { owner.lifecycle.removeObserver(obs) }
     }

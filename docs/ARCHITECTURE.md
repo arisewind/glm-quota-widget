@@ -1,7 +1,7 @@
 # GLM Quota Widget 架构设计
 
-- 文档版本：v2.2（2026-07-19）
-- 状态：已实施
+- 文档版本：v3.6（2026-07-21）
+- 状态：已实施（v3.0–v3.6：额度告警 / 趋势图 / 设置独立页 / UI NordVPN 化 / 续航表 3-tab / owlmeter 横向卡 / widget 主题跟随）
 - 目标平台：Android（Kotlin / Jetpack Compose / AppWidget）
 - 技术栈：AGP 9.3 / Kotlin 2.2.10 / compileSdk 36.1 / minSdk 26 / targetSdk 36
 - 工程位置：仓库 [`android/`](../android/)
@@ -10,6 +10,19 @@
 > **平台演进**：本文档 v1.0 按 HarmonyOS 4.2（ArkTS / Form Kit）设计，后因 DevEco/hvigor 工具链网络死结转为 Android（HarmonyOS 4.2 兼容 APK）。v2.0 在 Android 上引入多服务商多账户架构。本文反映 v2.2 实际实现（含 v2.2 架构深化），v1.0 HarmonyOS 设计见 git 历史。
 
 > **v2.2 架构深化**（2026-07-19）：Provider 层由「三家 Provider 类 + `ServiceProvider` 接口 + `Providers` 工厂」折叠为单一 `ServiceProviderConfig` 数据表 + 唯一 fetch 实现；新增 `AccountRepository` 读 facade 收敛「活跃账户选择 + 缓存读取」（消除 `"active_account_id"` 契约复制 3 份）；Worker 读 cache `errorCode` 跳过 stop-code 账户。UI/Widget/缓存总体分层不变，Provider 与账户读路径细节以代码为准，详见 [REVIEW §0](REVIEW.md)。
+
+> **v3.x 演进**（2026-07-19~21，分层不变、新增组件）：
+> - **v3.0 告警**：`UsageAlerter`（两档 85%/100% + armed 去重 + 恢复清通知）+ `AlertStateStore`（滞回死区）+ `NotificationLogStore`（通知记录 200 条）+ Android13 `POST_NOTIFICATIONS`。
+> - **v3.1 趋势**：`UsageHistoryStore`（7 天用量序列）→ `WeeklyTrendCard` Canvas 折线。
+> - **v3.2 设置/主题**：`SettingsScreen`（6 组含系统引导：通知权限/电池白名单/启动管理）+ `SettingsStore.themeMode`（light/dark/system）。
+> - **v3.3 UI**：NordVPN 蓝 `#4687FF`（`ui/theme/Color.kt`）+ M3 语义（SegmentedButton / surfaceContainerLow / Shapes）。
+> - **v3.4 续航表**：线性卡 + 3-tab 底栏（`ui/Navigation` Tab + `AppScaffold` + `AppBottomBar`）+ 工具调用额度 `WindowKind.TOOLS` + `domain/UsageThresholds`（WARN60/DANGER85 单一真源）+ `domain/UsageMath`（primaryPercent 排除 TOOLS）。
+> - **v3.5 横向卡**：`RangePrimaryCard`/`RangeMiniRow`（主卡+mini）+ 主窗口可切「点 mini 升主」（`SettingsStore.primaryWindowKind`）+ 铃铛 badge（`hasUnreadNotifications`/`markNotificationsSeen`，`SettingsStore.lastSeenNotificationAt`）。
+> - **v3.6 widget 主题跟随**：`widget/WidgetPalette`（深/浅 data class + `forContext` 读 themeMode）—— RemoteViews 在 launcher 进程渲染不能用 Compose 主题，颜色代码驱动；浅色 drawable `widget_background_light`/`item_card_background_light`。
+>
+> ⚠️ **华为 ROM widget 坑**：`android.widget.ProgressBar` 未实现 `setProgressTint(int)` / `setProgressBackgroundTint(int)` 两个 `@RemotableViewMethod`（AOSP 有、华为删），调任一 → RemoteViews inflate 失败、widget 白屏。**解法**：widget 进度条颜色只用 XML 静态值（`progressTint`/`progressBackgroundTint`），数字用量色走 `setTextColor`（不受影响）。
+>
+> 本文正文组件清单（§5/§6/§8/§9/§10）尚未逐表补全 v3.x 新增类，结构分层与领域模型不变；新增类见上方分版本列表。
 
 ---
 

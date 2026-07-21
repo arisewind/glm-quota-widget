@@ -101,8 +101,15 @@ object UsageParser {
         val limits = root.optJSONArray("limits") ?: throw UpstreamChangedException("missing limits")
         val usage = root.optJSONObject("usage") ?: throw UpstreamChangedException("missing usage")
         val fiveHour = (0 until limits.length())
-            .mapNotNull { limits.optJSONObject(it)?.optJSONObject("detail") }
-            .firstOrNull() ?: throw UpstreamChangedException("missing 5h detail")
+            .mapNotNull { limits.optJSONObject(it) }
+            .firstOrNull { obj ->                                  // 优先按 5h=300 分钟锁定，防 upstream 多窗口取错
+                val w = obj.optJSONObject("window")
+                w != null && w.optInt("duration") == 300 && w.optString("timeUnit") == "TIME_UNIT_MINUTE"
+            }?.optJSONObject("detail")
+            ?: (0 until limits.length())                            // 回退首个 detail（兼容无 window 字段的旧响应）
+                .mapNotNull { limits.optJSONObject(it)?.optJSONObject("detail") }
+                .firstOrNull()
+            ?: throw UpstreamChangedException("missing 5h detail")
 
         val windows = listOf(
             toKimiWindow(fiveHour, WindowKind.FIVE_HOUR),
@@ -129,7 +136,7 @@ object UsageParser {
             resetAt = extractResetTime(o, "resetTime"),
             usedValue = usedRaw.takeIf { it > 0 },
             totalValue = limit.takeIf { it > 0 },
-            unit = "tokens"
+            unit = null   // Kimi coding plan limit=100 为百分比/点数额度，非 token；UI 走 % 分支不显示
         )
     }
 

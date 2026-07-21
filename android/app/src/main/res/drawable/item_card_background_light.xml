@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v3.6 列表 item 浅色背景（跟 App themeMode=light）：白卡 #FFFFFF 叠在浅灰页面上做分层，圆角与深色版一致 10dp -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="10dp" />
+</shape>

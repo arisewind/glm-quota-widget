@@ -1,6 +1,7 @@
 package com.example.myapplication.services
 
 import android.content.Context
+import com.example.myapplication.domain.WindowKind
 
 /** 非敏感用户设置（普通 Preferences，不存 Key）。 */
 class SettingsStore(context: Context) {
@@ -55,12 +56,29 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(KEY_THEME, mode).apply()
     }
 
+    /** v3.5：续航页主卡显示哪个窗口（用户偏好），null = 默认 5h 优先回退（见 UsageMath.primaryWindow）。 */
+    fun primaryWindowKind(): WindowKind? =
+        prefs.getString(KEY_PRIMARY_WINDOW, null)?.let { runCatching { WindowKind.valueOf(it) }.getOrNull() }
+
+    fun setPrimaryWindowKind(kind: WindowKind?) {
+        prefs.edit().putString(KEY_PRIMARY_WINDOW, kind?.name).apply()
+    }
+
+    /** v3.5：通知已读时间戳（铃铛 badge 用），0L = 全部视为未读。 */
+    fun lastSeenNotificationAt(): Long = prefs.getLong(KEY_LAST_SEEN_NOTIF, 0L)
+
+    fun setLastSeenNotificationAt(ts: Long) {
+        prefs.edit().putLong(KEY_LAST_SEEN_NOTIF, ts).apply()
+    }
+
     companion object {
         private const val KEY_BG_ALL = "bg_refresh_all"
         private const val KEY_ALERT_LOW = "alert_low"
         private const val KEY_ALERT_EXHAUSTED = "alert_exhausted"
         private const val LEGACY_KEY_ALERT = "alert_enabled"  // v3.0/v3.1 单告警开关，v3.2 迁移后废弃
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_PRIMARY_WINDOW = "primary_window_kind"  // v3.5 主窗口偏好（null=默认）
+        private const val KEY_LAST_SEEN_NOTIF = "last_seen_notification_at"  // v3.5 通知已读时间戳
 
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"

@@ -32,11 +32,13 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
     )
 
     private var rows: List<Row> = emptyList()
+    private var palette = WidgetPalette.forContext(context)  // v3.6 主题色，onDataSetChanged 刷新
 
     override fun onCreate() {}
 
     /** 系统在后台线程调用；经 [AccountRepository] 拉账户+缓存构建行（window fallback 已下沉到 primaryPercent）。 */
     override fun onDataSetChanged() {
+        palette = WidgetPalette.forContext(context)  // v3.6：themeMode 变 → refreshAll → 此处刷新主题
         val repo = AccountRepository(context)
         rows = runBlocking {
             repo.allSnapshots().map { item ->
@@ -69,17 +71,23 @@ class QuotaListFactory(private val context: Context) : RemoteViewsService.Remote
         if (position >= rows.size) return RemoteViews(context.packageName, R.layout.widget_quota_list_item)
         val row = rows[position]
         val views = RemoteViews(context.packageName, R.layout.widget_quota_list_item)
+        val p = palette
+        val usageColor = usageColorInt(row.usedPercent)
+        views.setInt(R.id.list_item_root, "setBackgroundResource", p.itemDrawable)  // v3.6 item 背景（深/浅）
         views.setInt(R.id.list_item_brand, "setBackgroundColor", row.brandColor)
         views.setTextViewText(R.id.list_item_name, row.name)
+        views.setTextColor(R.id.list_item_name, p.textPrimary)
         if (row.sub.isEmpty()) {
             views.setViewVisibility(R.id.list_item_plan, View.GONE)
         } else {
             views.setViewVisibility(R.id.list_item_plan, View.VISIBLE)
             views.setTextViewText(R.id.list_item_plan, row.sub)
+            views.setTextColor(R.id.list_item_plan, p.textSecondary)
         }
         val remaining = (100 - row.usedPercent).coerceIn(0, 100)
         views.setTextViewText(R.id.list_item_percent, "${remaining}%")
-        views.setTextColor(R.id.list_item_percent, usageColorInt(row.usedPercent))
+        views.setTextColor(R.id.list_item_percent, usageColor)
+        // 注：华为 ROM ProgressBar 未实现 setProgressTint/setProgressBackgroundTint（调了 inflate 失败），进度条全用 XML 静态色
         views.setProgressBar(R.id.list_item_bar, 100, row.usedPercent, false)
         // 点击该行 → fillInIntent 带账户 id（配合 Provider 的 setPendingIntentTemplate）
         val fillIn = Intent().putExtra(EXTRA_ACCOUNT_ID, row.accountId)
