@@ -48,3 +48,10 @@ val Typography = Typography(
         fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 0.5.sp
     )
 )
+
+/**
+ * 等宽字体（v3.7 品牌落地）：v2 终端数字语义（`$ monitoring quota` / 百分比 / 用量数值对齐）。
+ * 落地为系统 [FontFamily.Monospace]——JetBrains Mono 需 bundled 增数 MB 体积对用量小工具不划算，
+ * 且 Inter/JetBrains Mono 的 Downloadable Fonts 走 Google 服务器国内不通；系统等宽已满足对齐与终端感。
+ */
+val Mono = FontFamily.Monospace

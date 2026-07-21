@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_bg">#FF1A1F2E</color>
-    <color name="widget_bg_accent">#FF222B3E</color>
+    <!-- glintapi 品牌色（v3.7 品牌落地，对齐 App 冷光蓝青 + 深夜底） -->
+    <color name="splash_bg">#FF0E1530</color>         <!-- 系统开屏深夜底（core-splashscreen windowSplashScreenBackground） -->
+    <color name="widget_bg">#FF131A33</color>         <!-- 深色 widget 卡片底（对齐 App CardDark） -->
+    <color name="widget_bg_accent">#FF1B2440</color>  <!-- 深色 widget elevated -->
     <color name="widget_text_primary">#FFE8EDF5</color>
     <color name="widget_text_secondary">#FF8A94A6</color>
-    <color name="widget_accent">#FF4687FF</color> <!-- v3.6 统一 NordVPN 蓝（弃早期青绿 #3DD6D0，与 App 对齐） -->
+    <color name="widget_accent">#FF3B82F6</color>     <!-- 冷光蓝（原 NordVPN #4687FF，v3.7 对齐 App primary） -->
     <color name="widget_bar_track">#FF2C3447</color>
 </resources>

@@ -25,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +49,7 @@ import com.example.myapplication.ui.UsageScreen
 import com.example.myapplication.ui.UsageUiState
 import com.example.myapplication.ui.UsageViewModel
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,16 +74,26 @@ class MainActivity : ComponentActivity() {
         handleAccountIntent(intent, vm)
         setContent {
             val themeMode by vm.themeMode.collectAsState()
+            // glintapi 品牌 splash（~1.1s），结束后进入主界面；rememberSaveable 避免旋转/恢复重显
+            var showSplash by rememberSaveable { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                delay(1100L)
+                showSplash = false
+            }
             MyApplicationTheme(themeMode) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    val state by vm.state.collectAsState()
-                    when (val s = state) {
-                        UsageUiState.Loading -> LoadingView()
-                        UsageUiState.Unconfigured -> AddAccountScreen(vm, isFirst = true, onDone = {})
-                        is UsageUiState.Content -> AppScaffold(s, vm)
+                if (showSplash) {
+                    GlintSplash()
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        val state by vm.state.collectAsState()
+                        when (val s = state) {
+                            UsageUiState.Loading -> LoadingView()
+                            UsageUiState.Unconfigured -> AddAccountScreen(vm, isFirst = true, onDone = {})
+                            is UsageUiState.Content -> AppScaffold(s, vm)
+                        }
                     }
                 }
             }

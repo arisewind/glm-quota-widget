@@ -3,9 +3,10 @@
 
     <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
 
-    <!-- 开屏页主题（core-splashscreen）。深色品牌背景 + 应用图标，过渡到 Theme.MyApplication。 -->
+    <!-- 开屏页主题（core-splashscreen）。glintapi 深夜底 + sparkle 图标，过渡到 Theme.MyApplication。
+         系统阶段只能纯色背景；mesh 渐变 + 闪烁光标在 Activity 内 Compose 品牌 splash 实现。 -->
     <style name="Theme.MyApplication.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/widget_bg</item>
+        <item name="windowSplashScreenBackground">@color/splash_bg</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
     </style>

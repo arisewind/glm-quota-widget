@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.services.SettingsStore
 
-/** NordVPN 浅色 colorScheme（v3.3 落地）：主蓝 #4687FF + 浅冷灰白基底 + 完整 surfaceContainer 角色。 */
+/** glintapi 浅色 colorScheme（v3.7 品牌落地）：冷光蓝 #3B82F6 + 浅冷灰白基底 + 完整 surfaceContainer 角色。 */
 private val LightColors = lightColorScheme(
     primary = BrandPrimary,
     onPrimary = Color.White,
@@ -34,7 +34,7 @@ private val LightColors = lightColorScheme(
     onError = Color.White
 )
 
-/** NordVPN 深色 colorScheme：深蓝黑基底 + 亮蓝主色 + 完整 surfaceContainer 角色。 */
+/** glintapi 深色 colorScheme（v3.7 品牌落地）：深夜底 #0E1530 基底 + 冷光蓝主色 + 完整 surfaceContainer 角色。 */
 private val DarkColors = darkColorScheme(
     primary = BrandPrimary,
     onPrimary = Color.White,

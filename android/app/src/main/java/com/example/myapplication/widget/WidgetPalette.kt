@@ -9,9 +9,9 @@ import com.example.myapplication.services.SettingsStore
  * Widget 深浅色调色板（v3.6）。Widget 是 RemoteViews（桌面 launcher 进程渲染），
  * 不能用 Compose 主题，颜色需代码动态设；跟随 App [SettingsStore.themeMode]（非系统夜间）。
  *
- * - 深色 = 现状（widget_bg 深蓝黑系）
- * - 浅色 = App NordVPN 浅色 token（背景 #F7F8FA / 卡白 / 深字 #1A1F2E）
- * - accent 统一 NordVPN 蓝 #4687FF（v3.6 与 App 对齐，弃早期青绿 #3DD6D0）
+ * - 深色 = 深夜底系（widget_bg #131A33，对齐 App CardDark）
+ * - 浅色 = App 浅色 token（背景 #F7F8FA / 卡白 / 深字 #1A1F2E）
+ * - accent 统一 glintapi 冷光蓝 #3B82F6（v3.7 品牌对齐）
  *
  * 用量数字色（绿/橙/红）见 [usageColorInt]，深浅共用（三色在双底上都醒目）。
  */
@@ -28,7 +28,7 @@ internal data class WidgetPalette(
             itemDrawable = R.drawable.item_card_background,
             textPrimary = 0xFFE8EDF5.toInt(),
             textSecondary = 0xFF8A94A6.toInt(),
-            accent = 0xFF4687FF.toInt()
+            accent = 0xFF3B82F6.toInt()
         )
 
         val LIGHT = WidgetPalette(
@@ -36,7 +36,7 @@ internal data class WidgetPalette(
             itemDrawable = R.drawable.item_card_background_light,
             textPrimary = 0xFF1A1F2E.toInt(),
             textSecondary = 0xFF6B7280.toInt(),
-            accent = 0xFF4687FF.toInt()
+            accent = 0xFF3B82F6.toInt()
         )
 
         /** 跟随 App themeMode：light/dark 强制，system 看系统 uiMode。 */

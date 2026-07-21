@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- glintapi 单色前景（Android 13+ 主题图标）：纯白 sparkle，无中心点，主题抽屉里干净。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,24 C56.1,39.8 68.2,51.9 84,54 C68.2,56.1 56.1,68.2 54,84 C51.9,68.2 39.8,56.1 24,54 C39.8,51.9 51.9,39.8 54,24 Z" />
+</vector>

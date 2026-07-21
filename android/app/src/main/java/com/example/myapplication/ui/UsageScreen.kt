@@ -181,7 +181,7 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
                 val native = drawContext.canvas.nativeCanvas
                 val gridPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
                 val warnPaint = Paint().apply { color = 0xFFFF6B6B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
-                val ptPaint = Paint().apply { color = 0xFF4687FF.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
+                val ptPaint = Paint().apply { color = 0xFF3B82F6.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
                 val xPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
 
                 // Y 轴参考线 0/100
