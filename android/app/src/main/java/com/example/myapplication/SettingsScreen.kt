@@ -236,7 +236,7 @@ private fun ThemePicker(current: String, onPick: (String) -> Unit) {
     val opts = listOf(
         "浅色" to SettingsStore.THEME_LIGHT,
         "深色" to SettingsStore.THEME_DARK,
-        "跟随系统" to SettingsStore.THEME_SYSTEM
+        "系统" to SettingsStore.THEME_SYSTEM
     )
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         opts.forEachIndexed { index, (label, mode) ->

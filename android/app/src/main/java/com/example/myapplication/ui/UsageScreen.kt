@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +64,7 @@ import com.example.myapplication.domain.UsageThresholds
 import com.example.myapplication.domain.UsageTier
 import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.ui.theme.UsageDanger
+import com.example.myapplication.ui.theme.BrandPrimary
 import com.example.myapplication.ui.theme.UsageSafe
 import com.example.myapplication.ui.theme.UsageWarn
 import java.text.SimpleDateFormat
@@ -85,7 +87,7 @@ private fun OwlIconButton(onClick: () -> Unit, content: @Composable () -> Unit) 
         shape = RoundedCornerShape(12.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            contentColor = MaterialTheme.colorScheme.primary
         )
     ) {
         content()
@@ -163,19 +165,23 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
                 val plotH = plotBottom - plotTop
                 fun py(p: Int) = plotBottom - (p / 100f) * plotH
 
-                // X 轴：最近 7 天（含今天）固定日期刻度；数据点按索引等距（trend-final 样式）
+                // X 轴跨度：最早数据那天 → 今天，最多 7 天（新账户数据少时从当天起，不固定画满 7 天）
                 val dayMs = 86_400_000L
-                val cal = java.util.Calendar.getInstance().apply {
+                fun dayStart(ts: Long): Long = java.util.Calendar.getInstance().run {
+                    timeInMillis = ts
                     set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
                     set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                    timeInMillis
                 }
-                val startMs = cal.timeInMillis   // 本地今天 00:00（避免 UTC 天桶的时区偏移）
-                fun px(i: Int) = padL + i * plotW / (n - 1)
+                val todayMs = dayStart(System.currentTimeMillis())
+                val xAxisStart = maxOf(dayStart(points.first().ts), todayMs - 6 * dayMs)
+                val spanDays = ((todayMs - xAxisStart) / dayMs).toInt().coerceIn(1, 6)
+                fun px(i: Int) = padL + i * plotW / (n - 1)   // 数据点按索引等距（视觉连续）
 
                 val native = drawContext.canvas.nativeCanvas
                 val gridPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
                 val warnPaint = Paint().apply { color = 0xFFFF6B6B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
-                val ptPaint = Paint().apply { color = 0xFF00C2B8.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
+                val ptPaint = Paint().apply { color = 0xFF4687FF.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
                 val xPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
 
                 // Y 轴参考线 0/100
@@ -194,21 +200,22 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
                     for (i in 1 until n) lineTo(px(i), py(points[i].percent))
                 }
                 val area = Path().apply { addPath(line); lineTo(px(n - 1), plotBottom); lineTo(px(0), plotBottom); close() }
-                drawPath(area, Brush.verticalGradient(listOf(UsageSafe.copy(alpha = 0.4f), UsageSafe.copy(alpha = 0.02f)), startY = plotTop, endY = plotBottom))
-                drawPath(line, UsageSafe, style = Stroke(width = 2.dp.toPx()))
+                drawPath(area, Brush.verticalGradient(listOf(BrandPrimary.copy(alpha = 0.4f), BrandPrimary.copy(alpha = 0.02f)), startY = plotTop, endY = plotBottom))
+                drawPath(line, BrandPrimary, style = Stroke(width = 2.dp.toPx()))
                 // 末点 + 数值标注
                 val lx = px(n - 1)
                 val ly = py(points[n - 1].percent)
-                drawCircle(UsageSafe, 4.dp.toPx(), Offset(lx, ly))
+                drawCircle(BrandPrimary, 4.dp.toPx(), Offset(lx, ly))
                 ptPaint.textAlign = Paint.Align.RIGHT
                 native.drawText("${points[n - 1].percent}%", lx, ly - 8.dp.toPx(), ptPaint)
-                // X 轴：固定 7 天日期刻度（首尾对齐边缘防溢出）
-                for (i in 0..6) {
-                    val ts = startMs - (6 - i) * dayMs
-                    val x = padL + (i.toFloat() / 6) * plotW
+                // X 轴：按数据范围（xAxisStart→today）画日期刻度，首尾对齐边缘防溢出
+                for (i in 0..spanDays) {
+                    val ts = xAxisStart + i * dayMs
+                    if (ts > todayMs) continue   // 不画未来刻度（同天数据只标今天）
+                    val x = padL + (i.toFloat() / spanDays) * plotW
                     xPaint.textAlign = when {
                         i == 0 -> Paint.Align.LEFT
-                        i == 6 -> Paint.Align.RIGHT
+                        i == spanDays -> Paint.Align.RIGHT
                         else -> Paint.Align.CENTER
                     }
                     native.drawText(dateFmt.format(Date(ts)), x, h - 4.dp.toPx(), xPaint)
@@ -217,7 +224,7 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
             // 重置日置卡片右下角（删「最近 7 天采样」字样）
             resetAt?.takeIf { it > 0 }?.let {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text("↻重置 ${dateFmt.format(Date(it))}", style = MaterialTheme.typography.bodySmall, color = UsageSafe, fontWeight = FontWeight.SemiBold)
+                    Text("↻重置 ${dateFmt.format(Date(it))}", style = MaterialTheme.typography.bodySmall, color = BrandPrimary, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -373,6 +380,7 @@ internal fun UsageScreen(
                     OwlIconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新")
                     }
+                    Spacer(Modifier.width(8.dp))
                     val hasUnread by vm.hasUnreadNotifications.collectAsState()
                     BadgedBox(badge = { if (hasUnread) Badge() }) {
                         OwlIconButton(onClick = onOpenNotifications) {
