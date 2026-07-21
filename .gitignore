@@ -28,3 +28,6 @@ Thumbs.db
 /example/
 /.vscode/
 /.playwright-mcp/
+
+# 项目文档（本地保留，不进公开仓库——用户要求 docs/prototype/example 等非代码内容不上传）
+/docs/
