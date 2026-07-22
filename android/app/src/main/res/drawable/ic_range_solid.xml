@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 续航=仪表盘 solid（选中）：半圆+中心圆 evenOdd→环（镂空），指针穿过可见 -->
+    <path
+        android:pathData="M4,17 a8,8 0 0 1 16,0 z M12,15.1 a1.9,1.9 0 1 0 0,3.8 a1.9,1.9 0 1 0 0,-3.8"
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd" />
+    <path
+        android:pathData="M12,17 l4.2,-5.2"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+</vector>

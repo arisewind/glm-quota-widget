@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 续航=仪表盘 outline（未选）：半圆弧 + 指针 + 中心点 -->
+    <path
+        android:pathData="M4,17 a8,8 0 0 1 16,0"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M12,17 l4.2,-5.2"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M12,15.4 a1.6,1.6 0 1 0 0,3.2 a1.6,1.6 0 1 0 0,-3.2"
+        android:fillColor="#FF000000" />
+</vector>

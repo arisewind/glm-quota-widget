@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:padding="8dp"
-    android:layout_marginBottom="5dp"
+    android:layout_marginBottom="9dp"
     android:background="@drawable/item_card_background"
     android:gravity="center_vertical">
 

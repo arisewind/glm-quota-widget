@@ -1,6 +1,5 @@
 package com.example.myapplication
 
-import android.provider.Settings
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -21,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -30,13 +28,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.ui.rememberReduceMotion
 import com.example.myapplication.ui.theme.Mono
 
 private val BgDeep = Color(0xFF0E1530)
@@ -45,24 +43,17 @@ private val GlowCyan = Color(0xFF06B6D4)
 private val MutedText = Color(0xFF8A94A6)
 
 /**
- * glintapi 品牌 splash（Activity 内，core-splashscreen 之后）。
+ * GlintAPI 品牌 splash（Activity 内，core-splashscreen 之后）。
  *
  * 三层 mesh 径向渐变（蓝/青/深蓝光斑，复刻 v2 原型）+ Canvas 绘制的 sparkle logo
- * + glintapi 字标 + `$ monitoring quota` 终端文案带硬切闪烁光标。
+ * + GlintAPI 字标 + `$ monitoring quota` 终端文案带硬切闪烁光标。
  *
  * reduced-motion（系统「移除动画」/ animator duration scale = 0）时光标常亮不闪，
- * 对应 v2 的 `prefers-reduced-motion`，避免前庭不适。
+ * 对应 v2 的 `prefers-reduced-motion`，避免前庭不适。降级判断收敛到 [rememberReduceMotion]。
  */
 @Composable
 fun GlintSplash() {
-    val context = LocalContext.current
-    val reduceMotion = remember {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f
-        ) == 0f
-    }
+    val reduceMotion = rememberReduceMotion()
 
     // 光标硬切 blink：1100ms 周期，前 550ms 显示、后 550ms 隐藏（CSS steps(2,start) 等效）
     val transition = rememberInfiniteTransition(label = "cursor")

@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 账户=双人 solid（选中）：前人实心 + 后人半透明（多账户层次） -->
+    <path
+        android:pathData="M16,21 v-2 a4,4 0 0 0 -4,-4 H6 a4,4 0 0 0 -4,4 v2"
+        android:fillColor="#FF000000" />
+    <path
+        android:pathData="M9,3 a4,4 0 1 0 0,8 a4,4 0 1 0 0,-8"
+        android:fillColor="#FF000000" />
+    <path
+        android:pathData="M22,21 v-2 a4,4 0 0 0 -3,-3.87"
+        android:fillColor="#FF000000"
+        android:fillAlpha="0.5" />
+    <path
+        android:pathData="M16,3.13 a4,4 0 0 1 0,7.75"
+        android:fillColor="#FF000000"
+        android:fillAlpha="0.5" />
+</vector>

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.Credential
 import com.example.myapplication.domain.UsageSnapshot
+import com.example.myapplication.domain.UsageStatus
 import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.domain.primaryPercent
 import com.example.myapplication.domain.primaryWindow
@@ -25,9 +26,13 @@ import com.example.myapplication.services.UsageProviderException
 import com.example.myapplication.services.UsageRefreshService
 import com.example.myapplication.widget.QuotaListWidgetProvider
 import com.example.myapplication.widget.WidgetRenderer
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -44,6 +49,10 @@ sealed interface UsageUiState {
         val primaryWindowKind: WindowKind?
     ) : UsageUiState
 }
+
+/** v3.8 任务1 Toast：分级 + 可选 action（重试）。底部 Snackbar 由 AppScaffold 收集展示。 */
+enum class SnackbarLevel { SUCCESS, ERROR, INFO }
+data class SnackbarMsg(val level: SnackbarLevel, val message: String, val actionLabel: String? = null)
 
 /** UI provider 选择器项。 */
 data class ProviderOption(
@@ -95,6 +104,14 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     /** 当前活跃账户的周窗用量历史（v3.1 趋势折线用）。 */
     private val _weeklyHistory = MutableStateFlow<List<UsageHistoryStore.Point>>(emptyList())
     val weeklyHistory: StateFlow<List<UsageHistoryStore.Point>> = _weeklyHistory
+
+    /** v3.8 任务3①：刷新中（驱动续航页顶栏刷新 icon 匀速旋转）。 */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
+    /** v3.8 任务1：Toast 事件流（刷新成功/失败反馈；extraBufferCapacity 防背压丢消息）。 */
+    private val _snackbar = MutableSharedFlow<SnackbarMsg>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val snackbar = _snackbar.asSharedFlow()
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
@@ -163,16 +180,36 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
+    private var refreshJob: Job? = null
+
+    /** 手动刷新。single-flight（并发点击跳过）+ 仅真刷新弹成功 Toast（节流命中/缓存不变静默）。 */
     fun refresh() {
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true) return  // 任务8：单飞守卫，防并发竞写 _isRefreshing/_snackbar
+        refreshJob = viewModelScope.launch {
             val activeId = _activeAccountId.value ?: return@launch
             val account = _accounts.value.firstOrNull { it.accountId == activeId } ?: return@launch
             val rs = refreshServiceFor(account)
-            val snap = rs.refresh(UsageRefreshService.Reason.MANUAL)
-            _activeSnapshot.value = snap
-            alerter.check(snap, account)
-            appendWeekly(account.accountId, snap)
-            notifyWidgets()
+            _isRefreshing.value = true
+            try {
+                val before = _activeSnapshot.value?.updatedAt
+                val snap = rs.refresh(UsageRefreshService.Reason.MANUAL)
+                _activeSnapshot.value = snap
+                alerter.check(snap, account)
+                appendWeekly(account.accountId, snap)
+                notifyWidgets()
+                // 任务8：仅真刷新（updatedAt 变化）弹成功，节流命中返回缓存静默；ERROR/异常弹失败带重试
+                // tryEmit + DROP_OLDEST：不挂起，防 buffer 满阻塞 finally 导致 _isRefreshing 卡 true
+                when {
+                    snap.status == UsageStatus.ERROR ->
+                        _snackbar.tryEmit(SnackbarMsg(SnackbarLevel.ERROR, snap.errorMessage ?: "刷新失败", "重试"))
+                    snap.updatedAt != before ->
+                        _snackbar.tryEmit(SnackbarMsg(SnackbarLevel.SUCCESS, "已刷新最新用量"))
+                }
+            } catch (e: Exception) {
+                _snackbar.tryEmit(SnackbarMsg(SnackbarLevel.ERROR, "网络异常，请重试", "重试"))
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

@@ -3,7 +3,6 @@ package com.example.myapplication.services
 import android.content.Context
 import com.example.myapplication.domain.Account
 import com.example.myapplication.domain.UsageSnapshot
-import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.domain.primaryPercent
 
 /**

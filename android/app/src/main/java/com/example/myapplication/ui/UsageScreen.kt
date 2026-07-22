@@ -4,6 +4,16 @@ package com.example.myapplication.ui
 
 import android.graphics.Paint
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,16 +50,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -180,8 +194,8 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
 
                 val native = drawContext.canvas.nativeCanvas
                 val gridPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
-                val warnPaint = Paint().apply { color = 0xFFFF6B6B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
-                val ptPaint = Paint().apply { color = 0xFF3B82F6.toInt(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
+                val warnPaint = Paint().apply { color = UsageDanger.toArgb(); textSize = 9.dp.toPx(); isAntiAlias = true }
+                val ptPaint = Paint().apply { color = BrandPrimary.toArgb(); textSize = 10.dp.toPx(); isAntiAlias = true; isFakeBoldText = true }
                 val xPaint = Paint().apply { color = 0xFF64748B.toInt(); textSize = 9.dp.toPx(); isAntiAlias = true }
 
                 // Y 轴参考线 0/100
@@ -237,13 +251,25 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
     val usedPercent = window.usedPercent
     val isTools = window.kind == WindowKind.TOOLS
     val color by animateColorAsState(targetValue = usageColorFor(usedPercent), label = "primaryUsageColor")
+    // 任务3 微动效：数字滚动 + 进度条增长；reduced-motion 瞬切（snap）
+    val reduceMotion = rememberReduceMotion()
+    val animatedUsed by animateIntAsState(
+        targetValue = usedPercent,
+        animationSpec = if (reduceMotion) snap() else tween(Motion.Durations.LONG),
+        label = "usedNum"
+    )
+    val animatedRatio by animateFloatAsState(
+        targetValue = (usedPercent / 100f).coerceIn(0f, 1f),
+        animationSpec = if (reduceMotion) snap() else spring(dampingRatio = 0.8f),
+        label = "primaryBar"
+    )
     val remainingText: String
     val remainingUnit: String
     if (isTools) {
         remainingText = "${((window.totalValue ?: 0.0) - (window.usedValue ?: 0.0)).toInt()}"
         remainingUnit = "次剩余"
     } else {
-        remainingText = "${100 - usedPercent}"
+        remainingText = "${100 - animatedUsed}"
         remainingUnit = "% 剩余"
     }
     Card(
@@ -267,7 +293,7 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
                 }
             }
             LinearProgressIndicator(
-                progress = { (usedPercent / 100f).coerceIn(0f, 1f) },
+                progress = { animatedRatio },
                 color = color,
                 trackColor = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))
@@ -341,6 +367,20 @@ internal fun UsageScreen(
 ) {
     val snap = content.snapshot
     val activeAccount = content.accounts.firstOrNull { it.accountId == content.activeAccountId }
+    // v3.8 任务3①：刷新中 → 顶栏刷新 icon 匀速 360° 旋转（VM.isRefreshing 驱动）
+    // 任务8：仅刷新中且非 reduced-motion 才创建无限旋转（否则 transition 不进 composition，零帧开销 + 挡 WCAG 2.3.3）
+    val isRefreshing by vm.isRefreshing.collectAsState()
+    val reduceMotion = rememberReduceMotion()
+    val refreshDeg = if (isRefreshing && !reduceMotion) {
+        val spin = rememberInfiniteTransition(label = "refresh")
+        spin.animateFloat(
+            initialValue = 0f, targetValue = 360f,
+            animationSpec = infiniteRepeatable(animation = tween(Motion.Durations.REFRESH_SPIN, easing = LinearEasing)),
+            label = "refreshDeg"
+        ).value
+    } else {
+        0f
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -378,11 +418,26 @@ internal fun UsageScreen(
                 },
                 actions = {
                     OwlIconButton(onClick = { vm.refresh() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新")
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = "刷新",
+                            modifier = Modifier.graphicsLayer { rotationZ = if (isRefreshing) refreshDeg else 0f }
+                        )
                     }
                     Spacer(Modifier.width(8.dp))
                     val hasUnread by vm.hasUnreadNotifications.collectAsState()
-                    BadgedBox(badge = { if (hasUnread) Badge() }) {
+                    BadgedBox(badge = {
+                        // 任务3 微动效：未读 badge 过冲弹出；reduced-motion 直接显示（挡 WCAG 2.3.3）
+                        if (hasUnread) {
+                            if (reduceMotion) {
+                                Badge()
+                            } else {
+                                val badgeScale = remember { Animatable(0f) }
+                                LaunchedEffect(Unit) { badgeScale.animateTo(1f, spring(dampingRatio = 0.4f)) }
+                                Badge(modifier = Modifier.scale(badgeScale.value))
+                            }
+                        }
+                    }) {
                         OwlIconButton(onClick = onOpenNotifications) {
                             Icon(Icons.Filled.Notifications, contentDescription = "通知记录")
                         }

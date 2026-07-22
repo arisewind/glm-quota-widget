@@ -38,7 +38,7 @@ class AccountStore(context: Context) {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.w(TAG, "EncryptedSharedPreferences 不可用，降级为普通私有存储", e)
+            Log.e(TAG, "EncryptedSharedPreferences 不可用，降级为普通私有存储——凭据将以明文落盘（Manifest allowBackup=false 已阻止云备份/设备迁移）", e)
             ctx.getSharedPreferences(FALLBACK_FILE, Context.MODE_PRIVATE)
         }
         migrateLegacyIfNeeded(ctx, secure)

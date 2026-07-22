@@ -17,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +43,7 @@ import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.NotificationLogEntry
 import com.example.myapplication.services.NotificationType
 import com.example.myapplication.services.ServiceProviders
+import com.example.myapplication.ui.EmptyState
 import com.example.myapplication.ui.UsageViewModel
 import com.example.myapplication.ui.theme.UsageDanger
 import com.example.myapplication.ui.theme.UsageSafe
@@ -93,11 +96,13 @@ internal fun NotificationLogScreen(vm: UsageViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             if (log.isEmpty()) {
-                Spacer(Modifier.height(80.dp))
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("🔕", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.size(12.dp))
-                    Text("暂无通知记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 任务1 方案 B：chip + 文案，替代 🔕 emoji；Box 撑高真居中（scroll Column 内 weight 无效）
+                Box(Modifier.fillMaxWidth().height(420.dp), contentAlignment = Alignment.Center) {
+                    EmptyState(
+                        icon = Icons.Filled.Notifications,
+                        title = "暂无通知记录",
+                        subtitle = "额度告警与恢复通知会在这里出现"
+                    )
                 }
             } else {
                 log.forEach { e -> TimelineItem(e) }
@@ -105,7 +110,7 @@ internal fun NotificationLogScreen(vm: UsageViewModel, onBack: () -> Unit) {
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "仅保留最近 200 条 · 5 小时窗口告警不发恢复通知",
+                "仅保留最近 100 条 · 5 小时窗口告警不发恢复通知",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )

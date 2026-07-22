@@ -14,6 +14,7 @@ import com.example.myapplication.domain.UsageSnapshot
 import com.example.myapplication.domain.UsageStatus
 import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.services.AccountRepository
+import com.example.myapplication.services.ServiceProviders
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,8 +65,11 @@ object WidgetRenderer {
         // v3.6 深浅主题色（跟随 App themeMode）：背景 drawable + 标题/标签/更新时间文字 + 进度条 track
         val p = WidgetPalette.forContext(context)
         views.setInt(R.id.widget_root, "setBackgroundResource", p.bgDrawable)
+        // v3.8 任务4 方案A：左侧服务商色条（按 provider 品牌色；未配置/未知→中性灰）
+        val brandColor = snapshot?.providerId?.let { ServiceProviders.findById(it)?.brandColor }
+            ?: 0xFF8A93A6.toInt()
+        views.setInt(R.id.widget_brand_bar, "setBackgroundColor", brandColor)
         views.setTextColor(R.id.widget_title, p.textPrimary)
-        views.setTextColor(R.id.widget_dot, p.accent)
         views.setTextColor(R.id.widget_session_label, p.textSecondary)
         views.setTextColor(R.id.widget_weekly_label, p.textSecondary)
         views.setTextColor(R.id.widget_session_value, p.textPrimary)  // v3.6：默认主题色（ERROR/UNCONFIGURED 态可读），正常态由 else 分支覆盖为用量色
