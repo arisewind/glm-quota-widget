@@ -92,8 +92,10 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     private val _primaryWindowKind = MutableStateFlow(settings.primaryWindowKind())
     val primaryWindowKind: StateFlow<WindowKind?> = _primaryWindowKind
 
-    /** v3.5：通知已读时间戳 + 铃铛未读 badge。 */
+    /** v3.5：通知已读时间戳 + 铃铛未读 badge。v3.8.1：未读数（badge 显数字，非仅红点）。 */
     private val _lastSeenNotificationAt = MutableStateFlow(settings.lastSeenNotificationAt())
+    private val _unreadCount = MutableStateFlow(0)
+    val unreadCount: StateFlow<Int> = _unreadCount
     private val _hasUnreadNotifications = MutableStateFlow(false)
     val hasUnreadNotifications: StateFlow<Boolean> = _hasUnreadNotifications
 
@@ -366,10 +368,12 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         recomputeUnread()
     }
 
-    /** v3.5：重算铃铛未读态。最新通知时间 > 已读时间即未读（readAll 廉价，直接读 store，不依赖懒加载的 _notificationLog）。 */
+    /** v3.8.1：重算铃铛未读数（timestamp > 已读时间的条数，badge 显数字）。 */
     private fun recomputeUnread() {
-        val latest = notificationLogStore.readAll().firstOrNull()?.timestamp ?: 0L
-        _hasUnreadNotifications.value = latest > settings.lastSeenNotificationAt()
+        val seen = settings.lastSeenNotificationAt()
+        val unread = notificationLogStore.readAll().count { it.timestamp > seen }
+        _unreadCount.value = unread
+        _hasUnreadNotifications.value = unread > 0
     }
 
     /** 进入通知记录页时读最新（alerter append 已落盘）。 */

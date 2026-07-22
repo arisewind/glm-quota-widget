@@ -425,16 +425,19 @@ internal fun UsageScreen(
                         )
                     }
                     Spacer(Modifier.width(8.dp))
-                    val hasUnread by vm.hasUnreadNotifications.collectAsState()
+                    val unreadCount by vm.unreadCount.collectAsState()
                     BadgedBox(badge = {
-                        // 任务3 微动效：未读 badge 过冲弹出；reduced-motion 直接显示（挡 WCAG 2.3.3）
-                        if (hasUnread) {
+                        // 任务3 微动效：未读数 badge 过冲弹出（unreadCount 变化重弹）；reduced-motion 直接显示
+                        if (unreadCount > 0) {
                             if (reduceMotion) {
-                                Badge()
+                                Badge { Text(unreadCount.toString()) }
                             } else {
                                 val badgeScale = remember { Animatable(0f) }
-                                LaunchedEffect(Unit) { badgeScale.animateTo(1f, spring(dampingRatio = 0.4f)) }
-                                Badge(modifier = Modifier.scale(badgeScale.value))
+                                LaunchedEffect(unreadCount) {
+                                    badgeScale.snapTo(0f)
+                                    badgeScale.animateTo(1f, spring(dampingRatio = 0.4f))
+                                }
+                                Badge(modifier = Modifier.scale(badgeScale.value)) { Text(unreadCount.toString()) }
                             }
                         }
                     }) {
