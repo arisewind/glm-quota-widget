@@ -25,13 +25,15 @@ class ServiceProviderConfig(
     private val parse: (body: String, now: Long) -> UsageSnapshot,
     private val timeoutMs: Int = 15_000
 ) {
-    /** 凭据形态：GLM=Raw(直接 Key，不加 Bearer)；Kimi/MiniMax=Bearer。 */
-    enum class CredentialType { RAW, BEARER }
+    /** 凭据形态：GLM=Raw(直接 Key，不加 Bearer)；Kimi/MiniMax=Bearer；GLM Team=ZhipuTeam(三件套)。 */
+    enum class CredentialType { RAW, BEARER, ZHIPU_TEAM }
 
-    /** 按本服务商要求把原始 key 包成 [Credential]。 */
+    /** 按本服务商要求把原始 key 包成 [Credential]。Team 三件套走 VM 多参数路径，此处仅单 key provider 使用。 */
     fun credentialFor(key: String): Credential = when (credentialType) {
         CredentialType.RAW -> Credential.Raw(key)
         CredentialType.BEARER -> Credential.Bearer(key)
+        CredentialType.ZHIPU_TEAM ->
+            throw IllegalStateException("GLM Team 凭据为三件套，请用 addTeamAccount 路径构造 ZhipuTeam")
     }
 
     suspend fun fetchUsage(
@@ -40,13 +42,9 @@ class ServiceProviderConfig(
         http: HttpExecutor,
         now: () -> Long = { System.currentTimeMillis() }
     ): UsageSnapshot {
-        val key = extractKey(credential) ?: throw UsageProviderException(ErrorMapper.noPlan())
-        val auth = when (credentialType) {
-            CredentialType.RAW -> key
-            CredentialType.BEARER -> "Bearer $key"
-        }
+        val authHeaders = authHeadersFor(credential) ?: throw UsageProviderException(ErrorMapper.noPlan())
         val url = baseUrl(region) + path
-        val headers = extraHeaders + ("Authorization" to auth)
+        val headers = extraHeaders + authHeaders
         val resp = try {
             http.get(url, headers, timeoutMs)
         } catch (e: Exception) {
@@ -64,9 +62,23 @@ class ServiceProviderConfig(
         return parsed.copy(providerId = providerId, providerLabel = label)
     }
 
-    private fun extractKey(credential: Credential): String? = when (credentialType) {
-        CredentialType.RAW -> (credential as? Credential.Raw)?.key
-        CredentialType.BEARER -> (credential as? Credential.Bearer)?.key
+    /**
+     * 按凭据类型构造认证相关 headers（返回 null → 凭据类型不符/缺失 → NO_PLAN）。
+     * 返回 Map 以支持 GLM Team 的多 header（Authorization + bigmodel-organization/project）。
+     * orgId/projectId 是账户维度，无法塞进 config.extraHeaders，故在此动态注入。
+     */
+    private fun authHeadersFor(credential: Credential): Map<String, String>? = when (credentialType) {
+        CredentialType.RAW -> (credential as? Credential.Raw)?.let { mapOf("Authorization" to it.key) }
+        CredentialType.BEARER -> (credential as? Credential.Bearer)?.let { mapOf("Authorization" to "Bearer ${it.key}") }
+        CredentialType.ZHIPU_TEAM -> (credential as? Credential.ZhipuTeam)?.let { t ->
+            // 三件套任一为空视为凭据不完整（纵深防御，VM 层已前置校验给更明确提示）
+            if (t.apiKey.isBlank() || t.orgId.isBlank() || t.projectId.isBlank()) null
+            else mapOf(
+                "Authorization" to t.apiKey,                  // 团队 Key 直接用，不加 Bearer（同个人版）
+                "bigmodel-organization" to t.orgId,
+                "bigmodel-project" to t.projectId
+            )
+        }
     }
 }
 
@@ -75,7 +87,7 @@ class ServiceProviderConfig(
  * 消除原 Models·Providers·VM·Factory·credentialFor·parse 六处元数据发散。
  */
 object ServiceProviders {
-    fun all(): List<ServiceProviderConfig> = listOf(glm(), kimi(), minimax())
+    fun all(): List<ServiceProviderConfig> = listOf(glm(), glmTeam(), kimi(), minimax())
 
     /** 按 id 取 config；未知 id 抛 IllegalArgumentException（新增账户路径 providerId 必然合法）。 */
     fun byId(id: String): ServiceProviderConfig =
@@ -97,6 +109,19 @@ object ServiceProviders {
         path = "/api/monitor/usage/quota/limit",
         extraHeaders = mapOf("Accept-Language" to "en-US,en", "Content-Type" to "application/json"),
         parse = UsageParser::parseGlm
+    )
+
+    /** GLM 团队版：同 path 加 ?type=2，Host 固定国内站，凭据三件套，响应 shape 与个人版一致 → 复用 parseGlm。 */
+    private fun glmTeam() = ServiceProviderConfig(
+        providerId = ServiceProviderInfo.GLM_TEAM_ID,
+        label = ServiceProviderInfo.GLM_TEAM_LABEL,
+        supportsRegion = false,                                          // 团队版仅国内站，z.ai 无 team
+        credentialType = ServiceProviderConfig.CredentialType.ZHIPU_TEAM,
+        brandColor = 0xFF2563EB.toInt(),                                 // 智谱团队蓝（区别于个人版青）
+        baseUrl = { "https://open.bigmodel.cn" },
+        path = "/api/monitor/usage/quota/limit?type=2",                  // 个人版同 path 加 ?type=2
+        extraHeaders = mapOf("Accept-Language" to "en-US,en", "Content-Type" to "application/json"),
+        parse = UsageParser::parseGlm                                    // 复用，不写 parseGlmTeam
     )
 
     private fun kimi() = ServiceProviderConfig(

@@ -43,6 +43,8 @@ internal fun AddAccountScreen(vm: UsageViewModel, isFirst: Boolean, onDone: () -
     val selected = options.first { it.providerId == providerId }
     var region by remember { mutableStateOf(Region.CN) }
     var key by remember { mutableStateOf("") }
+    var orgId by remember { mutableStateOf("") }      // GLM 团队版：组织 ID
+    var projectId by remember { mutableStateOf("") }  // GLM 团队版：项目 ID
     var label by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
@@ -106,7 +108,7 @@ internal fun AddAccountScreen(vm: UsageViewModel, isFirst: Boolean, onDone: () -
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                label = { Text("API Key") },
+                label = { Text(if (selected.requiresTeamCreds) "团队套餐 API Key" else "API Key") },
                 singleLine = true,
                 visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = { TextButton(onClick = { showKey = !showKey }) { Text(if (showKey) "隐藏" else "显示") } },
@@ -117,6 +119,42 @@ internal fun AddAccountScreen(vm: UsageViewModel, isFirst: Boolean, onDone: () -
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // GLM 团队版三件套：组织 ID / 项目 ID（官方未公开格式，需抓包获得）
+            if (selected.requiresTeamCreds) {
+                OutlinedTextField(
+                    value = orgId,
+                    onValueChange = { orgId = it },
+                    label = { Text("组织 ID（bigmodel-organization）") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        cursorColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = projectId,
+                    onValueChange = { projectId = it },
+                    label = { Text("项目 ID（bigmodel-project）") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        cursorColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "组织 / 项目 ID 获取：登录 bigmodel.cn/coding-plan/team/usage-stats，" +
+                        "浏览器开发者工具抓包 quota/limit 请求，复制请求头中 " +
+                        "bigmodel-organization / bigmodel-project 的值。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
@@ -142,12 +180,20 @@ internal fun AddAccountScreen(vm: UsageViewModel, isFirst: Boolean, onDone: () -
                     testing = true
                     error = null
                     val regionArg = if (selected.supportsRegion) region.name else null
-                    vm.addAccount(providerId, key.trim(), regionArg, label.trim()) { ok, msg ->
+                    val callback: (Boolean, String?) -> Unit = { ok, msg ->
                         testing = false
                         if (ok) onDone() else error = msg ?: "连接失败"
                     }
+                    if (selected.requiresTeamCreds) {
+                        vm.addTeamAccount(
+                            providerId, key.trim(), orgId.trim(), projectId.trim(), label.trim(), callback
+                        )
+                    } else {
+                        vm.addAccount(providerId, key.trim(), regionArg, label.trim(), callback)
+                    }
                 },
-                enabled = key.isNotBlank() && !testing,
+                enabled = (if (selected.requiresTeamCreds)
+                    key.isNotBlank() && orgId.isNotBlank() && projectId.isNotBlank() else key.isNotBlank()) && !testing,
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,

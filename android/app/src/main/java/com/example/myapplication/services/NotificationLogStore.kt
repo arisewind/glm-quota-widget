@@ -67,7 +67,7 @@ class NotificationLogStore(context: Context) {
 
     companion object {
         private const val KEY = "log"
-        private const val MAX = 200
+        private const val MAX = 100
         private val lock = Any()  // append 跨实例（VM 主线程 + Worker 后台线程）同步，防 read-modify-write 丢更新
     }
 }

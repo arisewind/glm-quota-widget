@@ -107,6 +107,7 @@ class AccountStore(context: Context) {
             is Credential.Raw -> credential.key
             is Credential.Bearer -> credential.key
             is Credential.VolcAksk -> credential.accessKeyId
+            is Credential.ZhipuTeam -> credential.apiKey
         }
         if (key.isEmpty()) return ""
         return if (key.length <= 8) "****" else "****..." + key.takeLast(4)
@@ -154,12 +155,17 @@ class AccountStore(context: Context) {
             is Credential.Bearer -> put("type", "bearer").put("key", c.key)
             is Credential.VolcAksk -> put("type", "volc_aksk")
                 .put("accessKeyId", c.accessKeyId).put("secretKey", c.secretKey)
+            is Credential.ZhipuTeam -> put("type", "zhipu_team")
+                .put("apiKey", c.apiKey).put("orgId", c.orgId).put("projectId", c.projectId)
         }
     }
 
     private fun credentialFromJson(o: JSONObject): Credential = when (o.optString("type")) {
         "bearer" -> Credential.Bearer(o.optString("key"))
         "volc_aksk" -> Credential.VolcAksk(o.optString("accessKeyId"), o.optString("secretKey"))
+        "zhipu_team" -> Credential.ZhipuTeam(
+            o.optString("apiKey"), o.optString("orgId"), o.optString("projectId")
+        )
         else -> Credential.Raw(o.optString("key"))
     }
 

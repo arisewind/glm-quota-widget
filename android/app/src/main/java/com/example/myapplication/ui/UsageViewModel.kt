@@ -15,6 +15,7 @@ import com.example.myapplication.services.CacheStorage
 import com.example.myapplication.services.OkHttpExecutor
 import com.example.myapplication.services.PrefsCacheStorage
 import com.example.myapplication.services.ServiceProviders
+import com.example.myapplication.services.ServiceProviderConfig
 import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageAlerter
 import com.example.myapplication.services.NotificationLogEntry
@@ -48,7 +49,8 @@ sealed interface UsageUiState {
 data class ProviderOption(
     val providerId: String,
     val label: String,
-    val supportsRegion: Boolean
+    val supportsRegion: Boolean,
+    val requiresTeamCreds: Boolean = false   // true=GLM 团队版三件套，UI 出 3 输入框
 )
 
 class UsageViewModel(app: Application) : AndroidViewModel(app) {
@@ -117,7 +119,14 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 可添加的服务商列表（从 [ServiceProviders] 注册表派生，加服务商这里自动出现）。 */
     val providerOptions: List<ProviderOption> =
-        ServiceProviders.all().map { ProviderOption(it.providerId, it.label, it.supportsRegion) }
+        ServiceProviders.all().map {
+            ProviderOption(
+                providerId = it.providerId,
+                label = it.label,
+                supportsRegion = it.supportsRegion,
+                requiresTeamCreds = it.credentialType == ServiceProviderConfig.CredentialType.ZHIPU_TEAM
+            )
+        }
 
     private val refreshServices = mutableMapOf<String, UsageRefreshService>()
 
@@ -192,7 +201,7 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 添加账户：测试连接成功后保存并切为活跃。onResult(ok, errorMsg)。 */
+    /** 添加账户（单 Key 服务商）：测试连接成功后保存并切为活跃。onResult(ok, errorMsg)。 */
     fun addAccount(
         providerId: String,
         key: String,
@@ -202,36 +211,67 @@ class UsageViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             val credential = credentialFor(providerId, key)
-            val provider = ServiceProviders.byId(providerId)
-            val accountLabel = label?.takeIf { it.isNotBlank() }
-                ?: providerOptions.firstOrNull { it.providerId == providerId }?.label
-                ?: providerId
-            // 重名校验（账户名全局唯一，避免同服务商多账户混淆）
-            if (accountStore.listAccounts().any { it.label == accountLabel }) {
-                onResult(false, "账户名「$accountLabel」已存在，请改名后重试")
+            doAddAccount(providerId, credential, region, label, onResult)
+        }
+    }
+
+    /** 添加 GLM 团队版账户（三件套凭据）：测试连接成功后保存。onResult(ok, errorMsg)。 */
+    fun addTeamAccount(
+        providerId: String,
+        apiKey: String,
+        orgId: String,
+        projectId: String,
+        label: String?,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (apiKey.isBlank() || orgId.isBlank() || projectId.isBlank()) {
+                onResult(false, "API Key、组织 ID、项目 ID 均不能为空")
                 return@launch
             }
-            try {
-                provider.fetchUsage(credential, region, http) // 测试连接
-                val account = Account(
-                    accountId = "$providerId-${UUID.randomUUID()}",
-                    providerId = providerId,
-                    label = accountLabel,
-                    credential = credential,
-                    region = region,
-                    isActive = true
-                )
-                accountStore.saveAccount(account)
-                refreshServices.clear()
-                _accounts.value = accountStore.listAccounts()
-                _activeAccountId.value = account.accountId
-                repository.setActive(account.accountId)
-                onResult(true, null)
-                notifyWidgets()
-                hydrateAndRefresh(account.accountId)
-            } catch (e: UsageProviderException) {
-                onResult(false, e.mapped.message)
-            }
+            // Team 固定国内站（supportsRegion=false），region 传 null
+            val credential = Credential.ZhipuTeam(apiKey.trim(), orgId.trim(), projectId.trim())
+            doAddAccount(providerId, credential, null, label, onResult)
+        }
+    }
+
+    /** addAccount/addTeamAccount 共用：重名校验 + 测试连接 + 落盘 + 切活跃 + 刷新。 */
+    private suspend fun doAddAccount(
+        providerId: String,
+        credential: Credential,
+        region: String?,
+        label: String?,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val provider = ServiceProviders.byId(providerId)
+        val accountLabel = label?.takeIf { it.isNotBlank() }
+            ?: providerOptions.firstOrNull { it.providerId == providerId }?.label
+            ?: providerId
+        // 重名校验（账户名全局唯一，避免同服务商多账户混淆）
+        if (accountStore.listAccounts().any { it.label == accountLabel }) {
+            onResult(false, "账户名「$accountLabel」已存在，请改名后重试")
+            return
+        }
+        try {
+            provider.fetchUsage(credential, region, http) // 测试连接
+            val account = Account(
+                accountId = "$providerId-${UUID.randomUUID()}",
+                providerId = providerId,
+                label = accountLabel,
+                credential = credential,
+                region = region,
+                isActive = true
+            )
+            accountStore.saveAccount(account)
+            refreshServices.clear()
+            _accounts.value = accountStore.listAccounts()
+            _activeAccountId.value = account.accountId
+            repository.setActive(account.accountId)
+            onResult(true, null)
+            notifyWidgets()
+            hydrateAndRefresh(account.accountId)
+        } catch (e: UsageProviderException) {
+            onResult(false, e.mapped.message)
         }
     }
 

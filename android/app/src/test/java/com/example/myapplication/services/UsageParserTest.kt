@@ -59,6 +59,21 @@ class UsageParserTest {
         } catch (e: UpstreamChangedException) { /* ok */ }
     }
 
+    @Test
+    fun parseGlm_teamResponseShape_reusesParser() {
+        // GLM 团队版响应 shape 与个人版一致（cc-switch query_zhipu_team），直接复用 parseGlm。
+        // fetchUsage 末尾 copy() 会把 providerId/label 覆盖成 glm_team，此处只验解析归一化。
+        val body = """{"success":true,"data":{"level":"max","limits":[
+            {"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":26.0},
+            {"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":5.0}
+        ]}}"""
+        val snap = UsageParser.parseGlm(body, 1000L)
+        assertEquals("max", snap.planName)
+        assertEquals(26, snap.window(WindowKind.FIVE_HOUR)!!.usedPercent)
+        assertEquals(5, snap.window(WindowKind.WEEKLY)!!.usedPercent)
+        assertNull(snap.window(WindowKind.TOOLS))  // Team 样例无工具窗，优雅降级（可选窗口缺失为 null）
+    }
+
     // ---------- Kimi（ADR-0003）----------
 
     @Test

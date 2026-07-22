@@ -31,6 +31,8 @@ sealed class Credential {
     data class Bearer(val key: String) : Credential()
     /** 火山方舟：AK/SK 签名 V4（v2.1+）。 */
     data class VolcAksk(val accessKeyId: String, val secretKey: String) : Credential()
+    /** 智谱 GLM 团队版：三件套（apiKey + orgId + projectId），注入 Authorization + bigmodel-organization/project。 */
+    data class ZhipuTeam(val apiKey: String, val orgId: String, val projectId: String) : Credential()
 }
 
 /**
@@ -72,7 +74,9 @@ object ServiceProviderInfo {
     const val GLM_ID = "glm"
     const val KIMI_ID = "kimi"
     const val MINIMAX_ID = "minimax"
+    const val GLM_TEAM_ID = "glm_team"
     const val GLM_LABEL = "智谱 GLM Coding Plan"
     const val KIMI_LABEL = "Kimi For Coding"
     const val MINIMAX_LABEL = "MiniMax Coding Plan"
+    const val GLM_TEAM_LABEL = "智谱 GLM 团队版"
 }

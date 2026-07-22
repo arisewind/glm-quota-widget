@@ -119,8 +119,8 @@ fun GlintSplash() {
             Spacer(Modifier.height(22.dp))
             Text(
                 text = buildAnnotatedString {
-                    append("glint")
-                    withStyle(SpanStyle(color = GlowCyan)) { append("api") }
+                    append("Glint")
+                    withStyle(SpanStyle(color = GlowCyan)) { append("API") }
                 },
                 color = Color.White,
                 fontSize = 30.sp,
