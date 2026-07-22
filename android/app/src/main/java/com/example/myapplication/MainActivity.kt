@@ -11,6 +11,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -198,9 +200,14 @@ private fun AppScaffold(content: UsageUiState.Content, vm: UsageViewModel) {
                 }
             }
         }
-        // 任务8：snackbar 提升到 Box 最顶层，pushed 子页不再遮挡反馈
-        snackbarMsg?.let { msg ->
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp)) {
+        // 任务8：snackbar 提升到顶层；v3.9 Toast 方案 C：scale 弹性入场（reduced-motion 退化 fade）
+        AnimatedVisibility(
+            visible = snackbarMsg != null,
+            enter = if (reduceMotion) fadeIn() else scaleIn(initialScale = 0.88f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+            exit = if (reduceMotion) fadeOut() else scaleOut(targetScale = 0.88f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp)
+        ) {
+            snackbarMsg?.let { msg ->
                 GlintSnackbar(
                     msg = msg,
                     onAction = {

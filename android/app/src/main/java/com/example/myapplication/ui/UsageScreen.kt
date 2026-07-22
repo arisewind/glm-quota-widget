@@ -16,7 +16,9 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,18 +59,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.domain.NormalizedWindow
 import com.example.myapplication.domain.UsageStatus
@@ -76,8 +82,10 @@ import com.example.myapplication.domain.WindowKind
 import com.example.myapplication.domain.formatTime
 import com.example.myapplication.domain.UsageThresholds
 import com.example.myapplication.domain.UsageTier
+import com.example.myapplication.services.SettingsStore
 import com.example.myapplication.services.UsageHistoryStore
 import com.example.myapplication.ui.theme.UsageDanger
+import com.example.myapplication.ui.theme.BrandAccent
 import com.example.myapplication.ui.theme.BrandPrimary
 import com.example.myapplication.ui.theme.UsageSafe
 import com.example.myapplication.ui.theme.UsageWarn
@@ -90,6 +98,64 @@ private fun usageColorFor(usedPercent: Int): Color = when (UsageThresholds.tierO
     UsageTier.DANGER -> UsageDanger
     UsageTier.WARN -> UsageWarn
     UsageTier.SAFE -> UsageSafe
+}
+
+/**
+ * v3.8 方案 B：浅色续航页 safe 档进度条品牌化（蓝青渐变）。
+ *
+ * 浅色 + safe 档 → Canvas 自绘 [BrandPrimary]→[BrandAccent] 对角渐变填充（LinearProgressIndicator
+ * 的 color 参数只接 [Color] 不接 [Brush]，故自绘）；warn/danger 或深色 → 回退纯色
+ * [LinearProgressIndicator]（告警橙红不被品牌色稀释，深色续航页保持纯色不变）。
+ *
+ * 渐变是本地 brush，不污染 [usageColorFor] 单一真源（数字 / TierPill / mini card 仍走单色）。
+ *
+ * TODO(光晕): safe 档大数字蓝青光晕（drop-shadow α.20）—— Compose Text 渐变需 TextStyle brush
+ *   或 drawWithContent 叠加，本次先保进度条品牌化，数字光晕留后续。
+ */
+@Composable
+private fun BrandProgressIndicator(
+    progress: Float,
+    usedPercent: Int,
+    isLight: Boolean,
+    height: Dp,
+    modifier: Modifier = Modifier
+) {
+    val tier = UsageThresholds.tierOf(usedPercent)
+    val trackColor = MaterialTheme.colorScheme.surface
+    if (isLight && tier == UsageTier.SAFE) {
+        // safe 档：蓝青渐变（Canvas 自绘，track + 渐变填充）
+        Canvas(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2))) {
+            val w = size.width
+            val h = size.height
+            val r = CornerRadius(h / 2f, h / 2f)
+            drawRoundRect(color = trackColor, size = size, cornerRadius = r)
+            val fillW = w * progress.coerceIn(0f, 1f)
+            if (fillW > 0f) {
+                drawRoundRect(
+                    brush = Brush.linearGradient(listOf(BrandPrimary, BrandAccent)),
+                    size = Size(fillW, h),
+                    cornerRadius = r
+                )
+            }
+        }
+    } else {
+        // warn/danger 或深色：纯色（告警语义独立，深色不变）
+        LinearProgressIndicator(
+            progress = { progress },
+            color = usageColorFor(usedPercent),
+            trackColor = trackColor,
+            modifier = modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2))
+        )
+    }
+}
+
+/** v3.8 方案 B：浅色卡片蓝青微光描边 brush（α.16，白卡边缘隐约冷光）；深色返回 null（描边不变）。 */
+@Composable
+private fun brandCardBorderBrush(isLight: Boolean): Brush? = if (isLight) {
+    // 默认 topLeft→bottomRight 对角渐变（brush 作用域为 border 绘制区域）
+    Brush.linearGradient(listOf(BrandPrimary.copy(alpha = 0.16f), BrandAccent.copy(alpha = 0.16f)))
+} else {
+    null
 }
 
 /** v3.5 owlmeter 风格：浅灰底圆角方块 icon 按钮（surfaceContainerHigh 底 + 12dp 圆角，替代裸 IconButton）。 */
@@ -156,15 +222,22 @@ private fun StatusBanner(message: String, isStale: Boolean) {
 
 /** 7 天用量趋势（v3.1，Compose Canvas 自绘：时间驱动 X 轴固定 7 天日期 + 参考线 + 85% 告警线 + 渐变面积 + 末点标注；重置日置卡片右下角）。 */
 @Composable
-private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long?) {
+private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long?, isLight: Boolean) {
     val dateFmt = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
+    val borderBrush = brandCardBorderBrush(isLight)
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .then(if (borderBrush != null) Modifier.border(1.dp, borderBrush, RoundedCornerShape(20.dp)) else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("7天用量趋势", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // v3.8 方案 B：趋势标题旁 sparkle 点缀（浅色才显）
+                if (isLight) SparkleIcon(Modifier.padding(end = 5.dp), size = 12.dp)
+                Text("7天用量趋势", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            }
             Canvas(Modifier.fillMaxWidth().padding(horizontal = 6.dp).height(108.dp)) {
                 val w = size.width
                 val h = size.height
@@ -247,7 +320,7 @@ private fun WeeklyTrendCard(points: List<UsageHistoryStore.Point>, resetAt: Long
 
 /** v3.5 样式 A 主卡：横向大卡（左 标签+状态胶囊 / 右 大剩余% / 横向进度 / 已用·重置）。 */
 @Composable
-private fun RangePrimaryCard(window: NormalizedWindow) {
+private fun RangePrimaryCard(window: NormalizedWindow, isLight: Boolean) {
     val usedPercent = window.usedPercent
     val isTools = window.kind == WindowKind.TOOLS
     val color by animateColorAsState(targetValue = usageColorFor(usedPercent), label = "primaryUsageColor")
@@ -272,8 +345,11 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
         remainingText = "${100 - animatedUsed}"
         remainingUnit = "% 剩余"
     }
+    val borderBrush = brandCardBorderBrush(isLight)
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .then(if (borderBrush != null) Modifier.border(1.dp, borderBrush, RoundedCornerShape(20.dp)) else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
@@ -284,7 +360,13 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
                 verticalAlignment = Alignment.Top
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(window.kind.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // v3.8 方案 B：主卡标签旁 sparkle 点缀（品牌印记，浅色才显，深色续航页不动）
+                        if (isLight) {
+                            SparkleIcon(Modifier.padding(end = 5.dp), size = 14.dp)
+                        }
+                        Text(window.kind.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    }
                     TierPill(usedPercent)
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -292,11 +374,12 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
                     Text(remainingUnit, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
                 }
             }
-            LinearProgressIndicator(
-                progress = { animatedRatio },
-                color = color,
-                trackColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))
+            // v3.8 方案 B：safe 档（浅色）蓝青渐变进度条；warn/danger/深色 纯色不变
+            BrandProgressIndicator(
+                progress = animatedRatio,
+                usedPercent = usedPercent,
+                isLight = isLight,
+                height = 10.dp
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 val used = "已用 $usedPercent%"   // v3.6：底行统一纯百分比，去掉 "X/Y 单位 已用" 绝对值文案
@@ -309,7 +392,7 @@ private fun RangePrimaryCard(window: NormalizedWindow) {
 
 /** v3.5 样式 A mini 卡：可点击升主（onClick 传该窗口 kind）。 */
 @Composable
-private fun RangeMiniCard(window: NormalizedWindow, onClick: (WindowKind) -> Unit) {
+private fun RangeMiniCard(window: NormalizedWindow, onClick: (WindowKind) -> Unit, isLight: Boolean) {
     val usedPercent = window.usedPercent
     val isTools = window.kind == WindowKind.TOOLS
     val color = usageColorFor(usedPercent)
@@ -322,8 +405,12 @@ private fun RangeMiniCard(window: NormalizedWindow, onClick: (WindowKind) -> Uni
         remainingText = "${100 - usedPercent}"
         remainingUnit = "% 剩余"
     }
+    val borderBrush = brandCardBorderBrush(isLight)
     Card(
-        Modifier.fillMaxWidth().clickable { onClick(window.kind) },
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick(window.kind) }
+            .then(if (borderBrush != null) Modifier.border(1.dp, borderBrush, RoundedCornerShape(16.dp)) else Modifier),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
@@ -333,11 +420,12 @@ private fun RangeMiniCard(window: NormalizedWindow, onClick: (WindowKind) -> Uni
                 Text(remainingText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
                 Text(remainingUnit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 3.dp, bottom = 2.dp))
             }
-            LinearProgressIndicator(
-                progress = { (usedPercent / 100f).coerceIn(0f, 1f) },
-                color = color,
-                trackColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+            // v3.8 方案 B：safe 档（浅色）蓝青渐变 mini 进度条；warn/danger/深色 纯色不变
+            BrandProgressIndicator(
+                progress = (usedPercent / 100f).coerceIn(0f, 1f),
+                usedPercent = usedPercent,
+                isLight = isLight,
+                height = 6.dp
             )
             val aux = window.resetAt?.let { formatTime(it) }   // v3.6：辅助行统一重置时间，去掉 TOOLS "X/Y" 绝对值
             Text(aux ?: "—", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -347,11 +435,11 @@ private fun RangeMiniCard(window: NormalizedWindow, onClick: (WindowKind) -> Uni
 
 /** v3.5 样式 A mini 行：横向并排，每张 weight(1) 占满；点 mini 升主。 */
 @Composable
-private fun RangeMiniRow(windows: List<NormalizedWindow>, onClick: (WindowKind) -> Unit) {
+private fun RangeMiniRow(windows: List<NormalizedWindow>, onClick: (WindowKind) -> Unit, isLight: Boolean) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         windows.forEach { w ->
             Box(Modifier.weight(1f)) {
-                RangeMiniCard(w, onClick)
+                RangeMiniCard(w, onClick, isLight)
             }
         }
     }
@@ -371,6 +459,13 @@ internal fun UsageScreen(
     // 任务8：仅刷新中且非 reduced-motion 才创建无限旋转（否则 transition 不进 composition，零帧开销 + 挡 WCAG 2.3.3）
     val isRefreshing by vm.isRefreshing.collectAsState()
     val reduceMotion = rememberReduceMotion()
+    // v3.8 方案 B：浅色判断 —— mesh 背景 / safe 档渐变进度 / sparkle 点缀 / 微光描边 仅浅色生效（深色续航页不变）
+    val themeMode by vm.themeMode.collectAsState()
+    val isLight = when (themeMode) {
+        SettingsStore.THEME_LIGHT -> true
+        SettingsStore.THEME_DARK -> false
+        else -> !isSystemInDarkTheme()
+    }
     val refreshDeg = if (isRefreshing && !reduceMotion) {
         val spin = rememberInfiniteTransition(label = "refresh")
         spin.animateFloat(
@@ -387,6 +482,10 @@ internal fun UsageScreen(
                 title = {
                     Column(Modifier.clickable { onOpenAccounts() }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            // v3.8 方案 B：顶栏账户名前 sparkle 品牌印记（浅色慢呼吸；深色续航页不加点缀，保持纯色）
+                            if (isLight) {
+                                SparkleIcon(Modifier.padding(end = 7.dp), size = 18.dp)
+                            }
                             Text(
                                 activeAccount?.label ?: snap.providerLabel,
                                 style = MaterialTheme.typography.titleLarge,
@@ -453,6 +552,26 @@ internal fun UsageScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .drawBehind {
+                    // v3.8 方案 B：浅色续航页极浅蓝青 mesh（3 层 radialGradient，α.06–.10）；
+                    // 深色续航页保持纯色不绘制（切肤不切品牌——mesh 公式与深色 splash 同源，仅 alpha 等比降）
+                    if (isLight) {
+                        val w = size.width
+                        val h = size.height
+                        drawRect(Brush.radialGradient(
+                            listOf(BrandPrimary.copy(alpha = 0.10f), Color.Transparent),
+                            center = Offset(w * 0.22f, h * 0.14f), radius = w * 0.6f
+                        ))
+                        drawRect(Brush.radialGradient(
+                            listOf(BrandAccent.copy(alpha = 0.09f), Color.Transparent),
+                            center = Offset(w * 0.84f, h * 0.28f), radius = w * 0.55f
+                        ))
+                        drawRect(Brush.radialGradient(
+                            listOf(BrandPrimary.copy(alpha = 0.055f), Color.Transparent),
+                            center = Offset(w * 0.50f, h * 0.92f), radius = w * 0.7f
+                        ))
+                    }
+                }
                 .padding(horizontal = 22.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -467,15 +586,18 @@ internal fun UsageScreen(
             val primaryKind = content.primaryWindowKind
             val primaryWin = primaryKind?.let { snap.window(it) }
             val minis = snap.windows.filter { it.kind != primaryKind }
-            primaryWin?.let { RangePrimaryCard(it) }
-            if (minis.isNotEmpty()) RangeMiniRow(minis) { kind -> vm.setPrimaryWindow(kind) }
+            primaryWin?.let { RangePrimaryCard(it, isLight) }
+            if (minis.isNotEmpty()) RangeMiniRow(minis, { kind -> vm.setPrimaryWindow(kind) }, isLight)
 
             val weeklyHist by vm.weeklyHistory.collectAsState()
-            if (weeklyHist.size >= 2) WeeklyTrendCard(weeklyHist, snap.window(WindowKind.WEEKLY)?.resetAt)
+            if (weeklyHist.size >= 2) WeeklyTrendCard(weeklyHist, snap.window(WindowKind.WEEKLY)?.resetAt, isLight)
 
+            val cardBorder = brandCardBorderBrush(isLight)
             snap.modelUsage?.takeIf { it.isNotEmpty() }?.let { items ->
                 Card(
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (cardBorder != null) Modifier.border(1.dp, cardBorder, RoundedCornerShape(20.dp)) else Modifier),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {

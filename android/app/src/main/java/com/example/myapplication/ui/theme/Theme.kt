@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.services.SettingsStore
 
-/** glintapi 浅色 colorScheme（v3.7 品牌落地）：冷光蓝 #3B82F6 + 浅冷灰白基底 + 完整 surfaceContainer 角色。 */
+/** glintapi 浅色 colorScheme（v3.7 品牌落地 + v3.8 方案 B 续航页品牌化）：冷光蓝 #3B82F6 + 浅冷蓝白 #EFF6FC 基底 + 完整 surfaceContainer 角色。 */
 private val LightColors = lightColorScheme(
     primary = BrandPrimary,
     onPrimary = Color.White,
@@ -24,9 +24,9 @@ private val LightColors = lightColorScheme(
     onSurface = OnSurfaceLight,
     surfaceVariant = DividerLight,
     surfaceContainerLowest = CardLight,
-    surfaceContainerLow = Color(0xFFF3F5F8),
-    surfaceContainer = Color(0xFFEEF0F3),
-    surfaceContainerHigh = Color(0xFFE8EAEE),
+    surfaceContainerLow = Color(0xFFFFFFFF),   // 方案 B：续航页卡片纯白（原 #F3F5F8），在 #EFF6FC 冷蓝白底上呈白卡 + 蓝青微光描边
+    surfaceContainer = Color(0xFFE9F1F9),       // 方案 B：偏冷蓝灰（原 #EEF0F3），配合冷蓝白系
+    surfaceContainerHigh = Color(0xFFDDE7F2),   // 方案 B：偏冷蓝灰（原 #E8EAEE），OwlIconButton 底等
     onSurfaceVariant = OnSurfaceMutedLight,
     outline = BorderLight,
     outlineVariant = DividerLight,
