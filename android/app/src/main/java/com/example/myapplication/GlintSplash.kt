@@ -122,8 +122,8 @@ fun GlintSplash() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = MutedText, fontFamily = Mono)) { append("$ ") }
-                        withStyle(SpanStyle(color = GlowBlue, fontFamily = Mono)) { append("monitoring quota") }
+                        withStyle(SpanStyle(color = MutedText, fontFamily = Mono)) { append("flash of ") }
+                        withStyle(SpanStyle(color = GlowCyan, fontFamily = Mono)) { append("inspiration") }
                     },
                     fontSize = 14.sp
                 )

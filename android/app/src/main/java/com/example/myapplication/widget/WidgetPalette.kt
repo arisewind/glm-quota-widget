@@ -20,7 +20,8 @@ internal data class WidgetPalette(
     val itemDrawable: Int,     // 列表 item 背景 drawable
     val textPrimary: Int,
     val textSecondary: Int,
-    val accent: Int
+    val accent: Int,
+    val sparkleDrawable: Int   // v3.8 任务8：标题 sparkle，深/浅不同（浅色用更深青保对比）
 ) {
     companion object {
         val DARK = WidgetPalette(
@@ -28,7 +29,8 @@ internal data class WidgetPalette(
             itemDrawable = R.drawable.item_card_background,
             textPrimary = 0xFFE8EDF5.toInt(),
             textSecondary = 0xFF8A94A6.toInt(),
-            accent = 0xFF3B82F6.toInt()
+            accent = 0xFF3B82F6.toInt(),
+            sparkleDrawable = R.drawable.ic_sparkle
         )
 
         val LIGHT = WidgetPalette(
@@ -36,7 +38,8 @@ internal data class WidgetPalette(
             itemDrawable = R.drawable.item_card_background_light,
             textPrimary = 0xFF1A1F2E.toInt(),
             textSecondary = 0xFF6B7280.toInt(),
-            accent = 0xFF3B82F6.toInt()
+            accent = 0xFF3B82F6.toInt(),
+            sparkleDrawable = R.drawable.ic_sparkle_light
         )
 
         /** 跟随 App themeMode：light/dark 强制，system 看系统 uiMode。 */

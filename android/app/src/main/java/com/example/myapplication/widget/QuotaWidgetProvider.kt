@@ -69,6 +69,8 @@ object WidgetRenderer {
         val brandColor = snapshot?.providerId?.let { ServiceProviders.findById(it)?.brandColor }
             ?: 0xFF8A93A6.toInt()
         views.setInt(R.id.widget_brand_bar, "setBackgroundColor", brandColor)
+        // v3.8 任务8：标题 sparkle 深/浅切换（浅色用 ic_sparkle_light 保对比）
+        views.setImageViewResource(R.id.widget_sparkle, p.sparkleDrawable)
         views.setTextColor(R.id.widget_title, p.textPrimary)
         views.setTextColor(R.id.widget_session_label, p.textSecondary)
         views.setTextColor(R.id.widget_weekly_label, p.textSecondary)

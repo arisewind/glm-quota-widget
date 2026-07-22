@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GlintAPI sparkle 浅色版（深青 #0891B2，浅底对比 ≥3:1；深色版 ic_sparkle #06B6D4）。v3.8 任务8 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp"
+    android:height="14dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,18 C56.5,37 71,51.5 90,54 C71,56.5 56.5,71 54,90 C51.5,71 37,56.5 18,54 C37,51.5 51.5,37 54,18 Z"
+        android:fillColor="#0891B2" />
+</vector>
