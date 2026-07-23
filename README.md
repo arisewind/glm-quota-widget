@@ -331,7 +331,7 @@ android/app/src/main/java/com/example/myapplication/
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/arisewind/glint-api">
+      <a href="https://github.com/arisewind/GlintAPI">
         <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"><br>
         <sub>代码仓库</sub>
       </a>
