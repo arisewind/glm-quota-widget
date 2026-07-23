@@ -29,7 +29,10 @@ Thumbs.db
 /.clang-tidy
 **/.test
 
-# 本地截图（真机验证产物，不入库）
-/screenshot_*.png
+# 本地截图（旧版本真机验证产物，不入库；README 引用的 splash/home/accounts/settings 入库）
+/screenshot_v*.png
 /glm_screen.png
 /ui_dump*.xml
+
+# Release APK 产物（GitHub Release 附件，不入库）
+*.apk

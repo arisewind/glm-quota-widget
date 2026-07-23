@@ -20,6 +20,12 @@ Thumbs.db
 *.key
 *.env
 
+# Claude 配置 / 参考素材（本地用，不进公开仓库）
+/CLAUDE.md
+/README_CN_example.md
+/sys.png
+/toast-motion-full.jpeg
+
 # 参考素材 / 原型 / 编辑器配置（非项目代码，本地用；前导 / 仅匹配仓库根，避免误伤 com/example/ 包路径）
 /prototype/
 /NordVPN/
@@ -31,3 +37,7 @@ Thumbs.db
 
 # 项目文档（本地保留，不进公开仓库——用户要求 docs/prototype/example 等非代码内容不上传）
 /docs/
+
+# Release 签名 keystore + 密码（证书私钥与密码，绝不进 git）
+/android/app/*.jks
+/android/keystore.properties

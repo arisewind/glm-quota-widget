@@ -256,7 +256,7 @@ private fun AboutCard() {
     val ctx = LocalContext.current
     Card(Modifier.fillMaxWidth(), shape = cardShape, colors = sectionCardColors()) {
         Column(Modifier.padding(20.dp)) {
-            Text("智谱额度", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("GlintAPI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(8.dp))
             Text(
                 "桌面卡片实时查 API Coding Plan 用量，支持多服务商多账户。",
