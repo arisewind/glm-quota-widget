@@ -2,7 +2,7 @@
 
 # ⚡ GlintAPI
 
-**Android AI Coding Plan 用量查看工具，支持智谱 GLM / Kimi / MiniMax 多服务商多账户，App 内 + 桌面 Widget。**
+**Android Coding Plan 用量查看工具，支持智谱 GLM / Kimi / MiniMax 多服务商多账户，App 内 + 桌面 Widget。**
 
 [![Android](https://img.shields.io/badge/Android-minSdk%2026+-green.svg)]()
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-purple.svg)]()
@@ -22,10 +22,10 @@
 
 - 📊 **多服务商聚合** — 智谱 GLM（个人版+团队版）、Kimi、MiniMax，一屏查看所有额度
 - 📱 **桌面 Widget** — 单账户详情卡片 + 多账户列表卡片，数据一眼可见
-- 🔐 **本地加密存储** — API Key 经 EncryptedSharedPreferences 加密，不上传云端
+- 🔐 **本地加密存储** — API Key 经本地加密，不上传云端
 - ⚡ **低频刷新策略** — 手动优先 + 30min 后台 + 前台过期刷新，降低风控风险
-- 🎨 **品牌化设计** — GlintAPI 冷光蓝青配色、mesh splash、动效系统
-- 🔔 **额度告警** — 两档系统通知（85% 低额度 / 100% 耗尽），滞回死区防重复
+- 🎨 **品牌化设计** — 冷光蓝青配色、mesh splash、动效系统
+- 🔔 **额度告警** — 两档系统通知（85% 低额度 / 100% 耗尽）
 
 ---
 
@@ -289,10 +289,7 @@ android/app/src/main/java/com/example/myapplication/
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计 |
 | [ROADMAP.md](docs/ROADMAP.md) | 路线图（v1.1 → v3.9.0） |
 | [REVIEW.md](docs/REVIEW.md) | 项目审阅与关键决策 |
-| [v2-provider-research.md](docs/v2-provider-research.md) | 各服务商用量契约调研 |
-| [ADR-0001](docs/adr/0001-glm-coding-plan-usage-direct-key.md) | GLM 直连数据契约 |
-| [ADR-0009](docs/adr/0009-glintapi-brand.md) | GlintAPI 品牌落地 |
-| [ADR-0010](docs/adr/0010-v38-experience-bundle.md) | v3.8 体验深化任务包 |
+
 
 ---
 
